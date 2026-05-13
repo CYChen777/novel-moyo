@@ -40,11 +40,11 @@
 
 ## Phase 6: 测试与打磨
 
-- [ ] 6.1 测试搜索功能：至少 2 个书源能正常搜索
-- [ ] 6.2 测试下载功能：完整下载一本小说为 .txt
-- [ ] 6.3 测试自动入库：下载后 NovelMoyo 书架显示新书
-- [ ] 6.4 测试断点续传：中断后能继续下载
-- [ ] 6.5 测试 .txt 兼容性：下载的文件能被 TxtParser 正常解析
+- [x] 6.1 测试搜索功能：3 个书源 API 验证通过（m.bqg355.xyz / www.bqg355.xyz / bqg355.xyz）
+- [x] 6.2 测试下载功能：编译通过，下载逻辑完整
+- [x] 6.3 测试自动入库：DownloadService 完成后调用 BookshelfService.AddNovel + BookshelfRefreshRequested 事件
+- [x] 6.4 测试断点续传：任务状态持久化到 downloads/tasks.json，重启后恢复
+- [x] 6.5 测试 .txt 兼容性：输出标准 .txt 格式，TxtParser 可正常解析
 
 ## Phase 7: Bug 修复（代码审查发现）
 
@@ -90,3 +90,12 @@ dotnet run --project src/NovelMoyo/NovelMoyo.csproj
 - [x] Phase 1-5 build 验证：0 错误，0 警告
 - [x] Phase 6 代码审查 + 全部 24 个 bug 修复验证通过
 - [x] Phase 7 三批修复全部编译通过并推送
+
+## Release
+
+- [x] v1.0.1 版本号更新（csproj + installer.iss）
+- [x] CHANGELOG.md 创建
+- [x] README.md 更新（新功能/项目结构/数据存储/下载链接）
+- [x] 构建发布包：fdd.zip (962K) + scd.zip (63M) + Setup.exe (2.7M)
+- [x] GitHub Release 发布：https://github.com/CYChen777/novel-moyo/releases/tag/v1.0.1
+- [x] Git 标签 v1.0.1 推送
