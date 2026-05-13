@@ -45,10 +45,24 @@
 
 - 支持 **.txt** 格式（自动识别章节标题，支持 GBK/UTF-8/UTF-16 编码）
 - 支持 **.epub** 格式（使用 VersOne.Epub 解析）
-- 导入方式：文件选择器 + 拖拽导入
+- 导入方式：文件选择器 + 拖拽导入（支持多文件同时拖入）
 
 > Supports **.txt** (auto chapter detection, GBK/UTF-8/UTF-16 encoding) and **.epub** (via VersOne.Epub)
-> Import via file picker or drag & drop
+> Import via file picker or drag & drop (multiple files supported)
+
+### 在线下载 | Online Download
+
+- **在线书城** — 书架窗口底部进入，搜索小说或粘贴链接直接下载
+- **多书源并行搜索** — 同时从多个书源搜索，自动去重，章节数即时加载
+- **下载管理** — 支持取消下载，下载进度实时显示
+- **自动入库** — 下载完成后自动添加到书架，无需手动导入
+- **断点续传** — 下载任务状态持久化，重启后可继续
+
+> **Online book store** — enter from bookshelf, search novels or paste URL to download
+> **Multi-source parallel search** — search across multiple sources simultaneously, auto-dedup
+> **Download management** — cancel downloads, real-time progress display
+> **Auto bookshelf** — downloaded novels automatically added to bookshelf
+> **Resume downloads** — task state persisted, resume after restart
 
 ### 书架与进度 | Bookshelf & Progress
 
@@ -111,13 +125,13 @@
 
 ## 下载安装 | Download & Installation
 
-从 [Releases](https://github.com/CYChen777/novel-moyo/releases/tag/v1.0.0) 页面下载：
+从 [Releases](https://github.com/CYChen777/novel-moyo/releases/latest) 页面下载：
 
 | 下载项 | 说明 | 大小 |
 |---|---|---|
 | `NovelMoyo-Setup.exe` | Inno Setup 安装包，推荐 | ~2.7MB |
-| `NovelMoyo-v1.0.0-fdd.zip` | 框架依赖版，需 [.NET 8 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) | ~867KB |
-| `NovelMoyo-v1.0.0-scd.zip` | 独立部署版，无需额外安装 | ~63MB |
+| `NovelMoyo-v1.0.1-fdd.zip` | 框架依赖版，需 [.NET 8 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) | ~1MB |
+| `NovelMoyo-v1.0.1-scd.zip` | 独立部署版，无需额外安装 | ~63MB |
 
 ### 安装包安装 | Installer
 
@@ -166,11 +180,16 @@ novel-moyo/
     │   ├── AppSettings.cs           # 应用设置
     │   ├── Bookmark.cs              # 书签
     │   ├── BookshelfEntry.cs        # 书架条目
+    │   ├── BookSource.cs            # 书源配置
     │   ├── Chapter.cs               # 章节
+    │   ├── DownloadTask.cs          # 下载任务
     │   ├── HotkeyEntry.cs           # 快捷键配置
     │   ├── Novel.cs                 # 小说实体
-    │   └── ReadingProgress.cs       # 阅读进度
+    │   ├── ReadingProgress.cs       # 阅读进度
+    │   └── SearchResult.cs          # 搜索结果
     ├── Services/                    # 业务逻辑
+    │   ├── BookSource/              # 书源管理 + 搜索 + 解析
+    │   ├── Download/                # 下载服务
     │   ├── NovelParser/             # 小说解析器（txt/epub）
     │   ├── AutoScrollService.cs     # 自动滚动
     │   ├── BookmarkService.cs       # 书签管理
@@ -182,6 +201,7 @@ novel-moyo/
     │   ├── MainWindow.xaml(.cs)     # 透明阅读窗口
     │   ├── SettingsWindow.xaml(.cs) # 设置窗口
     │   ├── BookshelfWindow.xaml(.cs)# 书架窗口
+    │   ├── OnlineBookStoreWindow.xaml(.cs) # 在线书城窗口
     │   └── Controls/                # 自定义控件
     ├── Converters/                  # WPF 值转换器
     └── Resources/Themes/            # 主题资源（暗色/护眼绿/暖色）
@@ -193,6 +213,7 @@ novel-moyo/
 |---|---|
 | WPF (.NET 8) | 桌面 UI 框架 |
 | C# 12 | 编程语言 |
+| HtmlAgilityPack | HTML 解析（书源搜索） |
 | VersOne.Epub | EPUB 文件解析 |
 | System.Text.Json | JSON 序列化 |
 | Win32 API (P/Invoke) | 全局热键、鼠标穿透、鼠标钩子 |
@@ -206,14 +227,19 @@ novel-moyo/
 %APPDATA%\StealthReader\
 ├── settings.json              # 应用设置 + 快捷键配置
 ├── bookshelf.json             # 书架列表
-└── progress/
-    └── {novelId}.json         # 每本书的阅读进度 + 书签
+├── sources.json               # 书源配置
+├── progress/
+│   └── {novelId}.json         # 每本书的阅读进度 + 书签
+└── downloads/
+    └── tasks.json             # 下载任务状态（断点续传）
 ```
 
 All user data is stored at `%APPDATA%\StealthReader\`:
 - `settings.json` — app settings and hotkey configuration
 - `bookshelf.json` — bookshelf list
+- `sources.json` — book source configuration
 - `progress/{novelId}.json` — reading progress and bookmarks per novel
+- `downloads/tasks.json` — download task state (for resume)
 
 ## 许可证 | License
 

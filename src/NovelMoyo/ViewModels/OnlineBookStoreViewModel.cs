@@ -278,6 +278,7 @@ public class OnlineBookStoreViewModel : INotifyPropertyChanged
         });
     }
 
+    // H7: Static event — BookshelfWindow subscribes/unsubscribes in ctor/Closed
     public static event EventHandler? BookshelfRefreshRequested;
 
     public event PropertyChangedEventHandler? PropertyChanged;
