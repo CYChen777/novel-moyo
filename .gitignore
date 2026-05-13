@@ -10,6 +10,7 @@ obj/
 ## Build results
 [Dd]ebug/
 [Rr]elease/
+publish/
 x64/
 x86/
 *.dll
