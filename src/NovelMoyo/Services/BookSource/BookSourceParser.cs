@@ -230,9 +230,9 @@ public class BookSourceParser
                 });
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // JSON parsing failed
+            System.Diagnostics.Debug.WriteLine($"ParseSearchResultsJson failed: {ex.Message}");
         }
 
         return results;
@@ -302,9 +302,9 @@ public class BookSourceParser
                 });
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // JSON parsing failed
+            System.Diagnostics.Debug.WriteLine($"ParseCatalogJson failed: {ex.Message}");
         }
 
         return chapters;
@@ -343,8 +343,9 @@ public class BookSourceParser
             var body = ResolveJsonString(doc.RootElement, jsonPath.Body ?? "") ?? "";
             return (title, body);
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"ParseContentJson failed: {ex.Message}");
             return ("", "");
         }
     }

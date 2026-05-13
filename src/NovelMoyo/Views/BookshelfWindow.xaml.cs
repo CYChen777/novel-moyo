@@ -24,7 +24,11 @@ public partial class BookshelfWindow : Window
 
     private void OnBookshelfRefreshRequested(object? sender, System.EventArgs e)
     {
-        _vm.RefreshList();
+        // H12: Ensure we're on the UI thread
+        if (Dispatcher.CheckAccess())
+            _vm.RefreshList();
+        else
+            Dispatcher.Invoke(() => _vm.RefreshList());
     }
 
     /// <summary>
@@ -76,12 +80,15 @@ public partial class BookshelfWindow : Window
         if (e.Data.GetDataPresent(DataFormats.FileDrop))
         {
             var files = (string[]?)e.Data.GetData(DataFormats.FileDrop);
-            if (files?.Length > 0)
+            if (files is { Length: > 0 })
             {
-                var ext = Path.GetExtension(files[0]).ToLowerInvariant();
-                if (ext is ".txt" or ".epub")
+                foreach (var file in files)
                 {
-                    _vm.ImportFileFromPath(files[0]);
+                    var ext = Path.GetExtension(file).ToLowerInvariant();
+                    if (ext is ".txt" or ".epub")
+                    {
+                        _vm.ImportFileFromPath(file);
+                    }
                 }
             }
         }

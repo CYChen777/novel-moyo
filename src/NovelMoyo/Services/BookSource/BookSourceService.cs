@@ -22,21 +22,28 @@ public class BookSourceService
     };
 
     private BookSourceConfig _config = new();
+    private readonly object _lock = new();
 
     public BookSourceService()
     {
         Load();
     }
 
-    public List<Models.BookSource> GetAll() => _config.BookSources;
+    public List<Models.BookSource> GetAll()
+    {
+        lock (_lock) { return _config.BookSources.ToList(); }
+    }
 
-    public List<Models.BookSource> GetEnabled() => _config.BookSources.Where(s => s.Enabled).ToList();
+    public List<Models.BookSource> GetEnabled()
+    {
+        lock (_lock) { return _config.BookSources.Where(s => s.Enabled).ToList(); }
+    }
 
     public void Load()
     {
         if (!File.Exists(SourcesPath))
         {
-            _config = CreateDefaultConfig();
+            lock (_lock) { _config = CreateDefaultConfig(); }
             Save();
             return;
         }
@@ -44,11 +51,13 @@ public class BookSourceService
         try
         {
             var json = File.ReadAllText(SourcesPath);
-            _config = JsonSerializer.Deserialize<BookSourceConfig>(json, JsonOptions) ?? new BookSourceConfig();
+            var config = JsonSerializer.Deserialize<BookSourceConfig>(json, JsonOptions) ?? new BookSourceConfig();
+            lock (_lock) { _config = config; }
         }
-        catch
+        catch (Exception ex)
         {
-            _config = CreateDefaultConfig();
+            System.Diagnostics.Debug.WriteLine($"BookSourceService.Load failed: {ex.Message}");
+            lock (_lock) { _config = CreateDefaultConfig(); }
             Save();
         }
     }
@@ -56,30 +65,35 @@ public class BookSourceService
     public void Save()
     {
         Directory.CreateDirectory(AppDataRoot);
-        var json = JsonSerializer.Serialize(_config, JsonOptions);
+        BookSourceConfig config;
+        lock (_lock) { config = _config; }
+        var json = JsonSerializer.Serialize(config, JsonOptions);
         File.WriteAllText(SourcesPath, json);
     }
 
     public void Add(Models.BookSource source)
     {
-        _config.BookSources.Add(source);
+        lock (_lock) { _config.BookSources.Add(source); }
         Save();
     }
 
     public void Remove(string title)
     {
-        _config.BookSources.RemoveAll(s => s.Title == title);
+        lock (_lock) { _config.BookSources.RemoveAll(s => s.Title == title); }
         Save();
     }
 
     public void Update(Models.BookSource source)
     {
-        var index = _config.BookSources.FindIndex(s => s.Title == source.Title);
-        if (index >= 0)
+        lock (_lock)
         {
-            _config.BookSources[index] = source;
-            Save();
+            var index = _config.BookSources.FindIndex(s => s.Title == source.Title);
+            if (index >= 0)
+            {
+                _config.BookSources[index] = source;
+            }
         }
+        Save();
     }
 
     private static Models.BookSource CreateBqgSource(string title, string host)

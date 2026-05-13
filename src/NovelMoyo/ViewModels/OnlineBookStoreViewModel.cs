@@ -169,10 +169,22 @@ public class OnlineBookStoreViewModel : INotifyPropertyChanged
     {
         if (SelectedResult == null) return;
 
-        // Ensure download directory exists
+        // Ensure download directory exists and is writable
         if (!string.IsNullOrEmpty(DownloadPath))
         {
-            Directory.CreateDirectory(DownloadPath);
+            try
+            {
+                Directory.CreateDirectory(DownloadPath);
+                // M23: Verify write permission
+                var testFile = Path.Combine(DownloadPath, ".write_test");
+                File.WriteAllText(testFile, "");
+                File.Delete(testFile);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"下载目录不可写: {ex.Message}";
+                return;
+            }
         }
 
         StatusMessage = $"开始下载: {SelectedResult.Title}";
