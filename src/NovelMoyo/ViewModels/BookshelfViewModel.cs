@@ -103,7 +103,7 @@ public class BookshelfViewModel : INotifyPropertyChanged
         OnNovelSelected?.Invoke(SelectedNovel.NovelId);
     }
 
-    private void RefreshList()
+    public void RefreshList()
     {
         Novels.Clear();
         foreach (var entry in _bookshelfService.GetAll())

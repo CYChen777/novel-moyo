@@ -6,6 +6,8 @@ using System.Windows;
 using System.Windows.Forms;
 using NovelMoyo.Models;
 using NovelMoyo.Services;
+using NovelMoyo.Services.BookSource;
+using NovelMoyo.Services.Download;
 using NovelMoyo.Services.NovelParser;
 using NovelMoyo.ViewModels;
 using NovelMoyo.Views;
@@ -21,6 +23,9 @@ public partial class App : Application
     private BookshelfService? _bookshelfService;
     private BookmarkService? _bookmarkService;
     private NovelParserFactory? _parserFactory;
+    private BookSourceService? _bookSourceService;
+    private SearchService? _searchService;
+    private DownloadService? _downloadService;
     private AppSettings _settings = new();
 
     protected override void OnStartup(StartupEventArgs e)
@@ -50,6 +55,11 @@ public partial class App : Application
             _bookshelfService = new BookshelfService(_dataStore, _parserFactory);
             _bookmarkService = new BookmarkService(_dataStore);
             var autoScrollService = new AutoScrollService();
+
+            // Download services
+            _bookSourceService = new BookSourceService();
+            _searchService = new SearchService(_bookSourceService);
+            _downloadService = new DownloadService(_searchService, _dataStore);
 
             // Create MainWindow with ViewModel
             var mainVm = new MainViewModel(_dataStore, _bookshelfService, _bookmarkService, autoScrollService, _parserFactory);
@@ -175,6 +185,14 @@ public partial class App : Application
             _mainWindow.Activate();
             _mainWindow.OpenSettingsFromTray();
         });
+    }
+
+    internal void OpenOnlineBookStore()
+    {
+        if (_searchService is null || _downloadService is null) return;
+        var vm = new OnlineBookStoreViewModel(_searchService, _downloadService);
+        var win = new OnlineBookStoreWindow(vm);
+        win.ShowDialog();
     }
 
     private static Icon CreateTrayIconGraphic()

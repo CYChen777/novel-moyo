@@ -28,6 +28,7 @@
         </ListView>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button Content="在线书城" Width="80" Margin="0,0,8,0" Click="OnlineBookStore_Click" />
             <Button Content="导入" Command="{Binding ImportFileCommand}" Width="80" Margin="0,0,8,0" />
             <Button Content="移除" Command="{Binding RemoveNovelCommand}" Width="80" Margin="0,0,8,0" />
             <Button Content="打开" Command="{Binding OpenNovelCommand}" Width="80" Margin="0,0,8,0" IsDefault="True" />

@@ -16,6 +16,15 @@ public partial class BookshelfWindow : Window
 
         Drop += OnFileDrop;
         DragOver += OnDragOver;
+
+        // Auto-refresh bookshelf when a download completes
+        OnlineBookStoreViewModel.BookshelfRefreshRequested += OnBookshelfRefreshRequested;
+        Closed += (_, _) => OnlineBookStoreViewModel.BookshelfRefreshRequested -= OnBookshelfRefreshRequested;
+    }
+
+    private void OnBookshelfRefreshRequested(object? sender, System.EventArgs e)
+    {
+        _vm.RefreshList();
     }
 
     /// <summary>
@@ -43,6 +52,14 @@ public partial class BookshelfWindow : Window
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         Close();
+    }
+
+    private void OnlineBookStore_Click(object sender, RoutedEventArgs e)
+    {
+        if (Application.Current is App app)
+        {
+            app.OpenOnlineBookStore();
+        }
     }
 
     private void OnDragOver(object sender, DragEventArgs e)
