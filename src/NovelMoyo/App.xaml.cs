@@ -104,9 +104,9 @@ public partial class App : Application
         // Save last novel ID — reading progress is already saved in MainWindow.OnClosing
         if (_dataStore is not null)
         {
-            var latestSettings = _dataStore.LoadSettings();
-            latestSettings.LastNovelId = _mainWindow?.CurrentNovelId;
-            _dataStore.SaveSettings(latestSettings);
+            // M19: Use in-memory settings instead of re-loading from disk
+            _settings.LastNovelId = _mainWindow?.CurrentNovelId;
+            _dataStore.SaveSettings(_settings);
         }
 
         // C1: Dispose download services to release HttpClient/socket resources

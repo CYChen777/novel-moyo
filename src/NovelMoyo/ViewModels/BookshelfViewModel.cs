@@ -105,8 +105,11 @@ public class BookshelfViewModel : INotifyPropertyChanged
 
     public void RefreshList()
     {
-        Novels.Clear();
-        foreach (var entry in _bookshelfService.GetAll())
+        // M18: Build list data (with I/O) then update collection on UI thread
+        var entries = _bookshelfService.GetAll();
+        var items = new List<BookshelfNovelItem>();
+
+        foreach (var entry in entries)
         {
             var fileMissing = !System.IO.File.Exists(entry.FilePath);
             var progress = _bookmarkService.LoadProgress(entry.NovelId);
@@ -132,7 +135,7 @@ public class BookshelfViewModel : INotifyPropertyChanged
                 progressText = "暂无进度";
             }
 
-            Novels.Add(new BookshelfNovelItem
+            items.Add(new BookshelfNovelItem
             {
                 NovelId = entry.NovelId,
                 Title = entry.Title,
@@ -142,6 +145,11 @@ public class BookshelfViewModel : INotifyPropertyChanged
                 FileMissing = fileMissing
             });
         }
+
+        // Update ObservableCollection on UI thread (single Clear + batch Add)
+        Novels.Clear();
+        foreach (var item in items)
+            Novels.Add(item);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
