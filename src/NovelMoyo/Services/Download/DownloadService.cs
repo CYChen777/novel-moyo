@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Security.Authentication;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using NovelMoyo.Models;
@@ -25,7 +26,7 @@ public class DownloadProgress
     public string? ErrorMessage { get; set; }
 }
 
-public class DownloadService
+public class DownloadService : IDisposable
 {
     private static readonly string AppDataRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -42,12 +43,15 @@ public class DownloadService
 
     private readonly SearchService _searchService;
     private readonly BookSourceParser _parser;
+    private readonly HttpClient _httpClient;
+    private readonly SocketsHttpHandler _handler;
     private readonly DataStore _dataStore;
     private readonly ObservableCollection<DownloadTaskInfo> _tasks = [];
-    private readonly SemaphoreSlim _semaphore;
+    private readonly object _tasksLock = new();
+    private readonly SemaphoreSlim _chapterSemaphore = new(10, 10);
     private readonly CancellationTokenSource _cts = new();
-    // Per-task CancellationTokenSource for cancellation
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _taskCancellations = new();
+    private readonly ConcurrentDictionary<string, Task> _activeDownloads = new();
 
     public ReadOnlyObservableCollection<DownloadTaskInfo> Tasks { get; }
     public event Action<DownloadProgress>? ProgressChanged;
@@ -57,7 +61,7 @@ public class DownloadService
     public DownloadService(SearchService searchService, DataStore dataStore)
     {
         _searchService = searchService;
-        var handler = new SocketsHttpHandler
+        _handler = new SocketsHttpHandler
         {
             ConnectTimeout = TimeSpan.FromSeconds(15),
             PooledConnectionLifetime = TimeSpan.FromMinutes(10),
@@ -66,15 +70,14 @@ public class DownloadService
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
             }
         };
-        var httpClient = new HttpClient(handler)
+        _httpClient = new HttpClient(_handler)
         {
-            Timeout = TimeSpan.FromSeconds(60)
+            Timeout = Timeout.InfiniteTimeSpan
         };
-        httpClient.DefaultRequestHeaders.Add("User-Agent",
+        _httpClient.DefaultRequestHeaders.Add("User-Agent",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-        _parser = new BookSourceParser(httpClient);
+        _parser = new BookSourceParser(_httpClient);
         _dataStore = dataStore;
-        _semaphore = new SemaphoreSlim(10, 10);
         Tasks = new ReadOnlyObservableCollection<DownloadTaskInfo>(_tasks);
 
         Directory.CreateDirectory(DownloadsDir);
@@ -89,6 +92,19 @@ public class DownloadService
 
         Directory.CreateDirectory(outputDir);
 
+        var outputPath = Path.Combine(outputDir, $"{SanitizeFileName(result.Title)}-{SanitizeFileName(result.Author)}.txt");
+
+        // If file already exists, append a numeric suffix (H9)
+        if (File.Exists(outputPath))
+        {
+            var baseName = Path.GetFileNameWithoutExtension(outputPath);
+            var dir = Path.GetDirectoryName(outputPath)!;
+            int suffix = 2;
+            while (File.Exists(Path.Combine(dir, $"{baseName}({suffix}).txt")))
+                suffix++;
+            outputPath = Path.Combine(dir, $"{baseName}({suffix}).txt");
+        }
+
         var task = new DownloadTaskInfo
         {
             Title = result.Title,
@@ -96,36 +112,69 @@ public class DownloadService
             BookUrl = result.Url,
             SourceName = result.SourceName,
             Status = DownloadStatus.Pending,
-            OutputPath = Path.Combine(outputDir, $"{SanitizeFileName(result.Title)}-{SanitizeFileName(result.Author)}.txt")
+            OutputPath = outputPath
         };
 
         var taskCts = new CancellationTokenSource();
         var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, taskCts.Token);
         _taskCancellations[task.Id] = taskCts;
 
-        _tasks.Add(task);
+        lock (_tasksLock)
+        {
+            _tasks.Add(task);
+        }
         SaveTasks();
         TaskAdded?.Invoke(task);
 
-        _ = Task.Run(() => DownloadBookAsync(task, result.Source, linkedCts.Token));
+        var downloadTask = Task.Run(async () =>
+        {
+            try
+            {
+                await DownloadBookAsync(task, result.Source, linkedCts.Token);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"DownloadBookAsync unhandled: {ex}");
+                task.Status = DownloadStatus.Failed;
+                task.ErrorMessage = $"内部错误: {ex.Message}";
+                SaveTasks();
+                ProgressChanged?.Invoke(new DownloadProgress
+                {
+                    TaskId = task.Id,
+                    IsCompleted = false,
+                    ErrorMessage = task.ErrorMessage
+                });
+            }
+            finally
+            {
+                _activeDownloads.TryRemove(task.Id, out _);
+                _taskCancellations.TryRemove(task.Id, out _);
+                linkedCts.Dispose();
+            }
+        });
+
+        _activeDownloads[task.Id] = downloadTask;
 
         return Task.FromResult(task);
     }
 
     public void CancelDownload(string taskId)
     {
-        var task = _tasks.FirstOrDefault(t => t.Id == taskId);
-        if (task != null)
+        lock (_tasksLock)
         {
-            task.Status = DownloadStatus.Failed;
-            task.ErrorMessage = "用户取消";
-            // Cancel the per-task token to stop all download threads
-            if (_taskCancellations.TryRemove(taskId, out var taskCts))
-                taskCts.Cancel();
-            // Remove from list
-            _tasks.Remove(task);
-            SaveTasks();
+            var task = _tasks.FirstOrDefault(t => t.Id == taskId);
+            if (task != null)
+            {
+                task.Status = DownloadStatus.Failed;
+                task.ErrorMessage = "用户取消";
+            }
         }
+
+        // Cancel the token; the download task will clean itself up
+        if (_taskCancellations.TryRemove(taskId, out var taskCts))
+            taskCts.Cancel();
+
+        SaveTasks();
     }
 
     public void RemoveTask(string taskId)
@@ -140,7 +189,6 @@ public class DownloadService
 
     private async Task DownloadBookAsync(DownloadTaskInfo task, Models.BookSource source, CancellationToken ct)
     {
-        await _semaphore.WaitAsync(ct);
         try
         {
             task.Status = DownloadStatus.Downloading;
@@ -197,7 +245,7 @@ public class DownloadService
                 CurrentChapter = "准备下载..."
             });
 
-            // Step 2: Download chapters in parallel
+            // Step 2: Download chapters in parallel (C4: uses _chapterSemaphore, not _outerSemaphore)
             var downloadedContent = new ConcurrentBag<(int index, string title, string content)>();
             int completedCount = 0;
 
@@ -205,7 +253,7 @@ public class DownloadService
             {
                 if (ct.IsCancellationRequested) return;
 
-                await _semaphore.WaitAsync(ct);
+                await _chapterSemaphore.WaitAsync(ct);
                 try
                 {
                     var downloadChapter = task.Chapters[i];
@@ -261,7 +309,7 @@ public class DownloadService
                 }
                 finally
                 {
-                    _semaphore.Release();
+                    _chapterSemaphore.Release();
                 }
             })).ToArray();
 
@@ -317,11 +365,6 @@ public class DownloadService
                 IsCompleted = false,
                 ErrorMessage = ex.Message
             });
-        }
-        finally
-        {
-            _taskCancellations.TryRemove(task.Id, out _);
-            _semaphore.Release();
         }
     }
 
@@ -380,9 +423,9 @@ public class DownloadService
                 _tasks.Add(task);
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Failed to load tasks
+            System.Diagnostics.Debug.WriteLine($"LoadTasks failed: {ex.Message}");
         }
     }
 
@@ -390,17 +433,24 @@ public class DownloadService
     {
         try
         {
-            var json = JsonSerializer.Serialize(_tasks.ToList(), JsonOptions);
+            List<DownloadTaskInfo> snapshot;
+            lock (_tasksLock)
+            {
+                snapshot = _tasks.ToList();
+            }
+            var json = JsonSerializer.Serialize(snapshot, JsonOptions);
             File.WriteAllText(TasksPath, json);
         }
-        catch
+        catch (Exception ex)
         {
-            // Failed to save tasks
+            System.Diagnostics.Debug.WriteLine($"SaveTasks failed: {ex.Message}");
         }
     }
 
     private static string SanitizeFileName(string name)
     {
+        if (string.IsNullOrWhiteSpace(name) || name.All(c => Path.GetInvalidFileNameChars().Contains(c)))
+            return "未知";
         var invalidChars = Path.GetInvalidFileNameChars();
         return new string(name.Select(c => invalidChars.Contains(c) ? '_' : c).ToArray());
     }
@@ -408,7 +458,24 @@ public class DownloadService
     public void Dispose()
     {
         _cts.Cancel();
+
+        // C2: Wait for all active downloads to complete before disposing
+        var activeTasks = _activeDownloads.Values.ToArray();
+        if (activeTasks.Length > 0)
+        {
+            try
+            {
+                Task.WaitAll(activeTasks, TimeSpan.FromSeconds(10));
+            }
+            catch (AggregateException) { }
+        }
+
         _cts.Dispose();
-        _semaphore.Dispose();
+        _chapterSemaphore.Dispose();
+        _httpClient.Dispose();
+        _handler.Dispose();
+
+        foreach (var cts in _taskCancellations.Values)
+            cts.Dispose();
     }
 }

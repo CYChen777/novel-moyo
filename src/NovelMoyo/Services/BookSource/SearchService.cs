@@ -9,16 +9,17 @@ using NovelMoyo.Models;
 
 namespace NovelMoyo.Services.BookSource;
 
-public class SearchService
+public class SearchService : IDisposable
 {
     private readonly BookSourceService _sourceService;
     private readonly BookSourceParser _parser;
     private readonly HttpClient _httpClient;
+    private readonly SocketsHttpHandler _handler;
 
     public SearchService(BookSourceService sourceService)
     {
         _sourceService = sourceService;
-        var handler = new SocketsHttpHandler
+        _handler = new SocketsHttpHandler
         {
             ConnectTimeout = TimeSpan.FromSeconds(15),
             PooledConnectionLifetime = TimeSpan.FromMinutes(10),
@@ -27,7 +28,7 @@ public class SearchService
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
             }
         };
-        _httpClient = new HttpClient(handler)
+        _httpClient = new HttpClient(_handler)
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
@@ -43,19 +44,21 @@ public class SearchService
         var results = await Task.WhenAll(tasks);
         var allResults = results.SelectMany(r => r).ToList();
 
-        // Deduplicate by title+author (multiple sources may return same books)
-        var seen = new HashSet<string>();
+        // Deduplicate by normalized title+author
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var deduped = new List<SearchResult>();
         foreach (var result in allResults)
         {
-            var key = $"{result.Title}|{result.Author}";
+            var key = $"{result.Title.Trim()}|{result.Author.Trim()}";
             if (seen.Add(key))
                 deduped.Add(result);
         }
 
-        // Fetch total chapters for each result
-        foreach (var result in deduped)
+        // Fetch total chapters in parallel with concurrency limit
+        using var chapterSemaphore = new System.Threading.SemaphoreSlim(5, 5);
+        var chapterTasks = deduped.Select(async result =>
         {
+            await chapterSemaphore.WaitAsync();
             try
             {
                 result.TotalChapters = await _parser.GetTotalChaptersAsync(result.Source, result.Url);
@@ -64,7 +67,12 @@ public class SearchService
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to get chapters for {result.Title}: {ex.Message}");
             }
-        }
+            finally
+            {
+                chapterSemaphore.Release();
+            }
+        });
+        await Task.WhenAll(chapterTasks);
 
         return deduped;
     }
@@ -128,13 +136,19 @@ public class SearchService
                 ];
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Parsing failed
+            System.Diagnostics.Debug.WriteLine($"SearchByUrlAsync failed: {ex.Message}");
         }
 
         return [];
     }
 
     public BookSourceParser GetParser() => _parser;
+
+    public void Dispose()
+    {
+        _httpClient.Dispose();
+        _handler.Dispose();
+    }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 
 namespace NovelMoyo.Models;
 
@@ -88,6 +89,7 @@ public class DownloadChapter
     public int Index { get; set; }
     public string Title { get; set; } = string.Empty;
     public string Url { get; set; } = string.Empty;
+    [JsonIgnore] // M16: Don't persist chapter content to tasks.json
     public string Content { get; set; } = string.Empty;
     public bool IsDownloaded { get; set; }
 }

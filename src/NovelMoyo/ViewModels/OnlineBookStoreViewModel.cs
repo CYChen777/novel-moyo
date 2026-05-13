@@ -183,6 +183,9 @@ public class OnlineBookStoreViewModel : INotifyPropertyChanged
     private void CancelDownload(DownloadTaskInfo? task)
     {
         if (task == null) return;
+        // Update UI first, then cancel in service
+        task.Status = DownloadStatus.Failed;
+        task.ErrorMessage = "用户取消";
         _downloadService.CancelDownload(task.Id);
         DownloadTasks.Remove(task);
         if (ActiveDownload?.Id == task.Id)
@@ -236,12 +239,7 @@ public class OnlineBookStoreViewModel : INotifyPropertyChanged
                 task.Status = DownloadStatus.Completed;
                 StatusMessage = $"下载完成: {task.Title}（{progress.TotalChapters} 章）";
                 ActiveDownload = null;
-                MessageBox.Show(
-                    $"《{task.Title}》下载完成！\n共 {progress.TotalChapters} 章\n已自动加入书架",
-                    "下载完成",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-                // Remove completed task from UI
+                // Remove completed task from UI (H10: no blocking MessageBox)
                 DownloadTasks.Remove(task);
                 _downloadService.RemoveTask(task.Id);
             }

@@ -109,6 +109,10 @@ public partial class App : Application
             _dataStore.SaveSettings(latestSettings);
         }
 
+        // C1: Dispose download services to release HttpClient/socket resources
+        _downloadService?.Dispose();
+        _searchService?.Dispose();
+
         base.OnExit(e);
     }
 
