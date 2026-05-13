@@ -109,21 +109,29 @@
 > **OS**: Windows 10 / 11 (x64)
 > **Runtime**: .NET 8.0 Desktop Runtime (required for framework-dependent mode)
 
-## 安装方式 | Installation
+## 下载安装 | Download & Installation
 
-### 方式一：下载安装包 | Option 1: Installer
+从 [Releases](https://github.com/CYChen777/novel-moyo/releases/tag/v1.0.0) 页面下载：
 
-从 [Releases](https://github.com/CYChen777/novel-moyo/releases) 下载 `NovelMoyo-Setup.exe`，运行安装即可。
+| 下载项 | 说明 | 大小 |
+|---|---|---|
+| `NovelMoyo-Setup.exe` | Inno Setup 安装包，推荐 | ~2.7MB |
+| `NovelMoyo-v1.0.0-fdd.zip` | 框架依赖版，需 [.NET 8 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) | ~867KB |
+| `NovelMoyo-v1.0.0-scd.zip` | 独立部署版，无需额外安装 | ~63MB |
 
-Download `NovelMoyo-Setup.exe` from [Releases](https://github.com/CYChen777/novel-moyo/releases) and run the installer.
+### 安装包安装 | Installer
 
-### 方式二：免安装版本 | Option 2: Portable
+下载 `NovelMoyo-Setup.exe`，双击运行，按向导完成安装。支持创建桌面快捷方式和开机自启动。
 
-从 [Releases](https://github.com/CYChen777/novel-moyo/releases) 下载单文件 `NovelMoyo.exe`，直接运行。删除文件即卸载。用户数据存储在 `%APPDATA%\StealthReader\`。
+Download `NovelMoyo-Setup.exe`, run it and follow the wizard. Supports desktop shortcut and auto-start on boot.
 
-Download the single-file `NovelMoyo.exe` from [Releases](https://github.com/CYChen777/novel-moyo/releases) and run directly. Delete the file to uninstall. User data is stored at `%APPDATA%\StealthReader\`.
+### 免安装版本 | Portable
 
-### 方式三：从源码构建 | Option 3: Build from Source
+下载 `fdd.zip` 或 `scd.zip`，解压后直接运行 `NovelMoyo.exe`。删除文件夹即卸载。用户数据存储在 `%APPDATA%\StealthReader\`。
+
+Download `fdd.zip` or `scd.zip`, extract and run `NovelMoyo.exe` directly. Delete the folder to uninstall. User data is stored at `%APPDATA%\StealthReader\`.
+
+### 从源码构建 | Build from Source
 
 ```bash
 # 克隆仓库 | Clone the repo
@@ -141,6 +149,9 @@ dotnet publish src/NovelMoyo/NovelMoyo.csproj -c Release -r win-x64
 
 # 发布（独立部署，约 155MB）| Publish (self-contained, ~155MB)
 dotnet publish src/NovelMoyo/NovelMoyo.csproj -c Release -r win-x64 --self-contained
+
+# 构建安装包 | Build installer
+# 需要安装 Inno Setup 6，然后编译 installer.iss
 ```
 
 ## 项目结构 | Project Structure
