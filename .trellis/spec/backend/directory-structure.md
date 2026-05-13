@@ -10,7 +10,12 @@
 ```
 D:/projects/novel-moyo/
 ├── NovelMoyo.sln
+├── README.md                  # Bilingual README (Chinese + English)
+├── .gitignore                 # Excludes bin/, obj/, publish/, etc.
 ├── installer.iss              # Inno Setup installer script
+├── publish/                   # Build output (git-ignored)
+│   ├── fdd/                   # Framework-dependent build
+│   └── scd/                   # Self-contained build
 └── src/NovelMoyo/             # Single project
     ├── NovelMoyo.csproj
     ├── App.xaml / App.xaml.cs  # Composition root

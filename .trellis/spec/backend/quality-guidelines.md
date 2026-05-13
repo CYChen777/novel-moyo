@@ -57,3 +57,43 @@
 4. **Do not add interfaces on services** — only parsers need abstraction (`INovelParser`).
 5. **Do not add unit tests** unless the developer requests them.
 6. **Keep bare catch blocks** for non-critical DataStore operations — this is intentional.
+
+---
+
+## Build & Release
+
+### Build Commands
+
+```bash
+# Debug build
+dotnet build src/NovelMoyo/NovelMoyo.csproj
+
+# Run
+dotnet run --project src/NovelMoyo/NovelMoyo.csproj
+
+# Publish: framework-dependent (~2.5MB, needs .NET 8 Runtime)
+dotnet publish src/NovelMoyo/NovelMoyo.csproj -c Release -r win-x64 -o publish/fdd
+
+# Publish: self-contained (~155MB, no extra install)
+dotnet publish src/NovelMoyo/NovelMoyo.csproj -c Release -r win-x64 --self-contained -o publish/scd
+```
+
+### Release Convention
+
+- **GitHub repo:** `https://github.com/CYChen777/novel-moyo`
+- **Release format:** `v{major}.{minor}.{patch}` (e.g., `v1.0.0`)
+- **Release assets:** Two zip files per release:
+  - `NovelMoyo-v{version}-fdd.zip` — framework-dependent (~867KB zipped)
+  - `NovelMoyo-v{version}-scd.zip` — self-contained (~63MB zipped)
+- **Git user:** `Yuchen <1596877162@qq.com>`
+
+### Gotcha: Separate Output Directories
+
+> **Warning:** FDD and SCD builds MUST use different `-o` output directories (`publish/fdd` vs `publish/scd`). If built to the same default directory, the second build overwrites the first.
+
+### .gitignore
+
+The following are excluded from version control:
+- `bin/`, `obj/` — build intermediates
+- `publish/` — build output (zip files for release)
+- `*.exe`, `*.dll`, `*.pdb` — binaries
