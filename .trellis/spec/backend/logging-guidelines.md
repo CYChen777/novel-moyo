@@ -6,10 +6,12 @@
 
 ## Current State
 
-The project has **no logging framework**. There is no `ILogger`, no Serilog, no NLog, no `Debug.WriteLine` calls in production code.
+The project has **no logging framework**. There is no `ILogger`, no Serilog, no NLog.
 
 Error information is surfaced via:
-- `MessageBox.Show()` for user-visible errors
+- `System.Diagnostics.Debug.WriteLine()` for catch block diagnostics (compiles out in Release)
+- `MessageBox.Show()` for user-visible errors (App startup, import failure)
+- Status bar messages for async operation errors (`StatusMessage` property)
 - Silent catch blocks for non-critical failures
 - `DispatcherUnhandledException` for unhandled crashes
 

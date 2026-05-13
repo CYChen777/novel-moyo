@@ -21,6 +21,8 @@ D:/projects/novel-moyo/
     ├── App.xaml / App.xaml.cs  # Composition root
     ├── Models/                 # POCO data models
     ├── Services/               # Business logic + persistence
+    │   ├── BookSource/         # Book source config + search + parsing
+    │   ├── Download/           # Download queue + chapter fetching
     │   └── NovelParser/        # Parser interface + implementations
     ├── ViewModels/             # MVVM ViewModels (shared with frontend)
     ├── Views/                  # XAML windows + controls
@@ -35,9 +37,9 @@ D:/projects/novel-moyo/
 
 ## Rules
 
-1. **Models** (`Models/`): Plain POCOs, no `INotifyPropertyChanged`. Data transfer objects only. All use file-scoped namespaces (`namespace NovelMoyo.Models;`).
-2. **Services** (`Services/`): Business logic, persistence, system integration. No interfaces except for parsers (`INovelParser`). Manually instantiated in `App.OnStartup`.
+1. **Models** (`Models/`): Data transfer objects. Most are plain POCOs. Models that are directly data-bound in WPF views (e.g. `SearchResult` in DataGrid, `DownloadTaskInfo` in ListView) may implement `INotifyPropertyChanged` — this is an exception to the POCO rule.
+2. **Services** (`Services/`): Business logic, persistence, system integration. No interfaces except for parsers (`INovelParser`). Manually instantiated in `App.OnStartup`. Services holding `HttpClient` or unmanaged resources must implement `IDisposable`.
 3. **Parsers** (`Services/NovelParser/`): File format parsing. Interface `INovelParser` with factory pattern `NovelParserFactory`.
 4. **No DI container** — all wiring is manual in `App.xaml.cs`.
-5. **File-per-class** — one class per `.cs` file, filename matches class name.
+5. **File-per-class** — one class per `.cs` file, filename matches class name. Exceptions: (a) tightly coupled config DTO groups in `Models/` may share a file (e.g. `BookSource.cs` with 9 config classes), (b) generic + non-generic variants of the same type (e.g. `RelayCommand` + `RelayCommand<T>`).
 6. **No `#region` directives** anywhere.

@@ -129,6 +129,7 @@ public class OnlineBookStoreViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[OnlineBookStore] 搜索失败: {ex.Message}");
             StatusMessage = $"搜索失败: {ex.Message}";
         }
         finally
@@ -157,6 +158,7 @@ public class OnlineBookStoreViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[OnlineBookStore] URL解析失败: {ex.Message}");
             StatusMessage = $"解析失败: {ex.Message}";
         }
         finally
@@ -182,6 +184,7 @@ public class OnlineBookStoreViewModel : INotifyPropertyChanged
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[OnlineBookStore] 目录权限检查失败: {ex.Message}");
                 StatusMessage = $"下载目录不可写: {ex.Message}";
                 return;
             }

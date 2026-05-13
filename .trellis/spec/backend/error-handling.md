@@ -47,3 +47,5 @@ catch { return null; }
 4. **DispatcherUnhandledException** is the global safety net — shows MessageBox, marks as handled.
 5. **Bare `catch { }`** is acceptable for non-critical operations (tray icon cleanup, progress save on exit).
 6. **Do NOT add try/catch around every method** — only catch where failure is expected or recovery is possible.
+7. **Async command errors** — report via ViewModel status properties (e.g. `StatusMessage`), never `MessageBox.Show`. All non-silent catch blocks must include `Debug.WriteLine`.
+8. **User-facing error messages** must be in Chinese. Wrap raw exception messages: `$"内部错误: {ex.Message}"` instead of passing `ex.Message` directly.

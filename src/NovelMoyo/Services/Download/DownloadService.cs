@@ -293,6 +293,7 @@ public class DownloadService : IDisposable
                 catch (Exception ex)
                 {
                     var downloadChapter = task.Chapters[i];
+                    System.Diagnostics.Debug.WriteLine($"[DownloadService] 章节下载失败: {downloadChapter.Title} - {ex.Message}");
                     downloadChapter.Content = $"[下载失败: {ex.Message}]";
                     downloadChapter.IsDownloaded = false;
 
@@ -355,8 +356,9 @@ public class DownloadService : IDisposable
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"[DownloadService] 下载任务失败: {task.Title} - {ex.Message}");
             task.Status = DownloadStatus.Failed;
-            task.ErrorMessage = ex.Message;
+            task.ErrorMessage = $"内部错误: {ex.Message}";
             SaveTasks();
 
             ProgressChanged?.Invoke(new DownloadProgress
