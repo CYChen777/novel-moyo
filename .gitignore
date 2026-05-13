@@ -26,6 +26,9 @@ project.lock.json
 .idea/
 .vscode/
 
+## Trellis workspace (personal dev logs)
+.trellis/workspace/
+
 ## OS
 Thumbs.db
 Desktop.ini
