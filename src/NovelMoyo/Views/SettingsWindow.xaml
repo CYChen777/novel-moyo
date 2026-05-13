@@ -1,0 +1,152 @@
+<Window x:Class="NovelMoyo.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="NovelMoyo 设置"
+        Width="520" Height="540"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="CanResizeWithGrip">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TabControl Grid.Row="0">
+            <!-- 外观 Tab -->
+            <TabItem Header="外观">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="12">
+                    <StackPanel>
+                        <TextBlock Text="背景透明度（鼠标离开时生效）" Margin="0,0,0,4" />
+                        <StackPanel Orientation="Horizontal">
+                            <Slider x:Name="OpacitySlider" Minimum="0" Maximum="1.0" Value="{Binding Opacity}" TickFrequency="0.05" IsSnapToTickEnabled="True" Width="220" />
+                            <TextBlock Text="{Binding Opacity, StringFormat='{}{0:F2}'}" VerticalAlignment="Center" Margin="8,0" />
+                        </StackPanel>
+
+                        <TextBlock Text="字体大小" Margin="0,12,0,4" />
+                        <StackPanel Orientation="Horizontal">
+                            <Slider x:Name="FontSizeSlider" Minimum="10" Maximum="36" Value="{Binding FontSize}" TickFrequency="1" IsSnapToTickEnabled="True" Width="220" />
+                            <TextBlock Text="{Binding FontSize, StringFormat='{}{0}px'}" VerticalAlignment="Center" Margin="8,0" />
+                        </StackPanel>
+
+                        <TextBlock Text="行间距" Margin="0,12,0,4" />
+                        <StackPanel Orientation="Horizontal">
+                            <Slider x:Name="LineSpacingSlider" Minimum="1.0" Maximum="3.0" Value="{Binding LineSpacing}" TickFrequency="0.1" IsSnapToTickEnabled="True" Width="220" />
+                            <TextBlock Text="{Binding LineSpacing, StringFormat='{}{0:F1}'}" VerticalAlignment="Center" Margin="8,0" />
+                        </StackPanel>
+
+                        <TextBlock Text="段间距" Margin="0,12,0,4" />
+                        <StackPanel Orientation="Horizontal">
+                            <Slider x:Name="ParagraphSpacingSlider" Minimum="0" Maximum="20" Value="{Binding ParagraphSpacing}" TickFrequency="2" IsSnapToTickEnabled="True" Width="220" />
+                            <TextBlock Text="{Binding ParagraphSpacing, StringFormat='{}{0:F0}'}" VerticalAlignment="Center" Margin="8,0" />
+                        </StackPanel>
+
+                        <TextBlock Text="字体颜色" Margin="0,12,0,4" />
+                        <WrapPanel x:Name="FontColorPanel" Margin="0,0,0,12" />
+
+                        <TextBlock Text="背景颜色" Margin="0,4,0,4" />
+                        <WrapPanel x:Name="BgColorPanel" Margin="0,0,0,12" />
+
+                        <TextBlock Text="主题" Margin="0,4,0,4" />
+                        <ComboBox ItemsSource="{Binding Themes}" SelectedItem="{Binding Theme}" Width="120" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- 阅读 Tab -->
+            <TabItem Header="阅读">
+                <StackPanel Margin="12">
+                    <TextBlock Text="滚轮速度" Margin="0,0,0,4" />
+                    <StackPanel Orientation="Horizontal">
+                        <Slider x:Name="ScrollSpeedSlider" Minimum="0.5" Maximum="4.5" Value="{Binding ScrollSpeed}" TickFrequency="0.25" IsSnapToTickEnabled="True" Width="220" />
+                        <TextBlock Text="{Binding ScrollSpeed, StringFormat='{}{0:F2}x'}" VerticalAlignment="Center" Margin="8,0" />
+                    </StackPanel>
+
+                    <TextBlock Text="自动滚动速度" Margin="0,12,0,4" />
+                    <StackPanel Orientation="Horizontal">
+                        <Slider x:Name="SpeedSlider" Minimum="1" Maximum="5" Value="{Binding AutoScrollSpeed}" TickFrequency="1" IsSnapToTickEnabled="True" Width="220" />
+                        <TextBlock Text="{Binding AutoScrollSpeed, StringFormat='{}{0}档'}" VerticalAlignment="Center" Margin="8,0" />
+                    </StackPanel>
+
+                    <CheckBox Content="启动时自动打开上次阅读的小说" IsChecked="{Binding StartWithLastNovel}" Margin="0,16,0,0" />
+
+                    <TextBlock Text="导入书籍" Margin="0,20,0,4" FontWeight="SemiBold" />
+                    <TextBlock Text="支持 .txt 和 .epub 格式" FontSize="11" Foreground="Gray" Margin="0,0,0,8" />
+                    <Button Content="选择文件并导入..." Command="{Binding ImportFileCommand}" Width="140" HorizontalAlignment="Left" />
+                </StackPanel>
+            </TabItem>
+
+            <!-- 快捷键 Tab -->
+            <TabItem Header="快捷键">
+                <Grid Margin="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <ListView x:Name="HotkeyListView"
+                              Grid.Column="0"
+                              ItemsSource="{Binding HotkeyEntries}"
+                              SelectionChanged="HotkeyListView_SelectionChanged">
+                        <ListView.View>
+                            <GridView>
+                                <GridViewColumn Header="功能" Width="140" DisplayMemberBinding="{Binding DisplayName}" />
+                                <GridViewColumn Header="快捷键" Width="180">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding KeyCombination}" Padding="4,2" />
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                            </GridView>
+                        </ListView.View>
+                    </ListView>
+
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0" Width="150">
+                        <TextBlock Text="选择快捷键项后，在此按下新快捷键组合：" TextWrapping="Wrap" Margin="0,0,0,8" FontSize="11" />
+                        <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="2" Padding="2">
+                            <TextBox x:Name="HotkeyInput"
+                                     IsReadOnly="True"
+                                     KeyDown="HotkeyInput_KeyDown"
+                                     GotFocus="HotkeyInput_GotFocus"
+                                     LostFocus="HotkeyInput_LostFocus"
+                                     Text="点击选择..."
+                                     Padding="4,2"
+                                     Background="Transparent"
+                                     BorderThickness="0" />
+                        </Border>
+                        <TextBlock x:Name="HotkeyHintText"
+                                   Text=""
+                                   Foreground="Gray"
+                                   FontSize="10"
+                                   Margin="0,4,0,0"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- 目录 Tab -->
+            <TabItem Header="目录" x:Name="ChapterTab">
+            </TabItem>
+
+            <!-- 书签 Tab -->
+            <TabItem Header="书签" x:Name="BookmarkTab">
+            </TabItem>
+
+            <!-- 其他 Tab -->
+            <TabItem Header="其他">
+                <StackPanel Margin="12">
+                    <CheckBox Content="开机自启动" IsChecked="{Binding AutoStart}" Margin="0,8,0,0" />
+                    <TextBlock Text="写入注册表 HKCU\Software\Microsoft\Windows\CurrentVersion\Run" FontSize="11" Foreground="Gray" Margin="24,4,0,0" />
+                    <CheckBox Content="启动时最小化到托盘" IsChecked="{Binding StartMinimizedToTray}" Margin="0,16,0,0" />
+                    <TextBlock Text="启用后程序启动时不显示窗口，仅在系统托盘显示图标" FontSize="11" Foreground="Gray" Margin="24,4,0,0" />
+                </StackPanel>
+            </TabItem>
+        </TabControl>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="重置" Command="{Binding ResetCommand}" Width="80" Margin="0,0,8,0" />
+            <Button Content="保存" Command="{Binding SaveCommand}" Width="80" IsDefault="True" />
+        </StackPanel>
+    </Grid>
+</Window>

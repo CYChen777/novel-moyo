@@ -1,0 +1,17 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <SolidColorBrush x:Key="BackgroundBrush" Color="#CC003300" />
+    <SolidColorBrush x:Key="WindowBorderBrush" Color="#006600" />
+    <SolidColorBrush x:Key="TextBrush" Color="#CCFFCC" />
+    <SolidColorBrush x:Key="TextDimBrush" Color="#88AA88" />
+    <SolidColorBrush x:Key="StatusBarBrush" Color="#004400" />
+    <SolidColorBrush x:Key="StatusBarTextBrush" Color="#AADDAA" />
+    <SolidColorBrush x:Key="BorderBrush" Color="#006600" />
+
+    <FontFamily x:Key="ReadingFontFamily">Microsoft YaHei, SimSun, Segoe UI</FontFamily>
+    <sys:Double x:Key="ReadingFontSize">16</sys:Double>
+    <sys:Double x:Key="ReadingLineHeight">28</sys:Double>
+
+</ResourceDictionary>
