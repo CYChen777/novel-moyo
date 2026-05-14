@@ -70,8 +70,6 @@ public class MainViewModel : INotifyPropertyChanged
         OpenFileCommand = new RelayCommand(OpenFile);
         AddBookmarkCommand = new RelayCommand(AddBookmark);
 
-        _autoScrollService.OnScrollTick += () => OnScrollTick?.Invoke();
-
         LoadSettings();
     }
 
@@ -91,9 +89,14 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand AddBookmarkCommand { get; }
 
     // Events
-    public event Action? OnScrollTick;
     public event Action<string>? OnBookmarkAdded;
     public event Action<string>? OnToastRequested;
+    /// <summary>
+    /// Raised when the user picks a file via OpenFileCommand. Subscribed by MainWindow
+    /// so it can flush the live scroll position via SaveCurrentProgress() before LoadNovel
+    /// runs and replaces the in-memory novel/progress state.
+    /// </summary>
+    public event Action<string>? OnLoadNovelRequested;
 
     // Properties
     public Novel? CurrentNovel
@@ -154,12 +157,12 @@ public class MainViewModel : INotifyPropertyChanged
     {
         get
         {
-            if (_currentNovel?.Chapters.Count == 0) return 0;
-            var totalChars = _currentNovel?.Chapters.Sum(c => c.Content.Length) ?? 1;
+            if (_currentNovel is null || _currentNovel.Chapters.Count == 0) return 0;
+            var totalChars = _currentNovel.Chapters.Sum(c => c.Content.Length);
             if (totalChars <= 0) return 0;
             // Fully read chapters (before current) + proportional fraction of current chapter
-            var readChars = _currentNovel?.Chapters.Take(_currentChapterIndex).Sum(c => c.Content.Length) ?? 0;
-            var currentChapterChars = _currentNovel?.Chapters.ElementAtOrDefault(_currentChapterIndex)?.Content.Length ?? 0;
+            var readChars = _currentNovel.Chapters.Take(_currentChapterIndex).Sum(c => c.Content.Length);
+            var currentChapterChars = _currentNovel.Chapters.ElementAtOrDefault(_currentChapterIndex)?.Content.Length ?? 0;
             var chapterRatio = _currentProgress?.ChapterScrollRatio ?? 0;
             readChars += (int)(currentChapterChars * chapterRatio);
             return Math.Min(100, readChars * 100.0 / totalChars);
@@ -410,7 +413,13 @@ public class MainViewModel : INotifyPropertyChanged
 
         if (dialog.ShowDialog() == true)
         {
-            LoadNovel(dialog.FileName);
+            // Delegate to MainWindow so it can persist the live scroll position before
+            // LoadNovel swaps out the current novel — direct LoadNovel here would lose
+            // the last few seconds of scrolling not yet covered by the debounced save.
+            if (OnLoadNovelRequested is not null)
+                OnLoadNovelRequested.Invoke(dialog.FileName);
+            else
+                LoadNovel(dialog.FileName);
         }
     }
 

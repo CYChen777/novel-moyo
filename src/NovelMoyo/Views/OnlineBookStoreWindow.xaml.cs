@@ -10,6 +10,7 @@ public partial class OnlineBookStoreWindow : Window
     {
         InitializeComponent();
         DataContext = viewModel;
+        Closed += (_, _) => viewModel.Dispose();
     }
 
     private void SearchBox_KeyDown(object sender, KeyEventArgs e)

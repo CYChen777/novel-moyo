@@ -130,8 +130,8 @@
 | 下载项 | 说明 | 大小 |
 |---|---|---|
 | `NovelMoyo-Setup.exe` | Inno Setup 安装包，推荐 | ~2.7MB |
-| `NovelMoyo-v1.0.1-fdd.zip` | 框架依赖版，需 [.NET 8 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) | ~1MB |
-| `NovelMoyo-v1.0.1-scd.zip` | 独立部署版，无需额外安装 | ~63MB |
+| `NovelMoyo-v1.0.2-fdd.zip` | 框架依赖版，需 [.NET 8 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) | ~1MB |
+| `NovelMoyo-v1.0.2-scd.zip` | 独立部署版，无需额外安装 | ~63MB |
 
 ### 安装包安装 | Installer
 

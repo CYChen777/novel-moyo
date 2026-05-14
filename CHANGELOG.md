@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.0.2 (2026-05-14)
+
+### Bug Fixes (12 项)
+
+**Critical (1)**
+- 滚轮跳章 — 鼠标滚轮快速向下滚动时，触底加载会以「整本缓冲的相对比例」错位恢复滚动，每次 Trim 就跳约 1 章，连续滚导致瞬间跳几章；改为同步 `UpdateLayout()` + 按真实像素差还原，并调换 `TrimOldChapters` / `Append-Prepend` 顺序保证读到一致的缓冲状态
+
+**High (3)**
+- 跨次启动跳章 — `ReadingProgress.ChapterScrollRatio` 之前实际保存的是「整个加载窗口的 ratio」，下次启动加载到同一章但缓冲窗口不同就会落到 X+2 章；新增 `ComputeChapterRelativeRatio` / `ScrollToChapterRatio` 改用章内 ratio 持久化
+- OnlineBookStoreViewModel 事件泄漏 — `_downloadService` 是单例，VM 订阅的 ProgressChanged/TaskAdded/TaskCompleted 在窗口关闭时未解绑；VM 实现 IDisposable，`OnlineBookStoreWindow.Closed` 触发 Dispose
+- DownloadService taskCts 资源泄漏 — 任务结束时 `TryRemove(out _)` 丢弃了 `CancellationTokenSource`；改为 `TryRemove(out var cts); cts.Dispose()`，`CancelDownload` 改用 `TryGetValue` 让 finally 统一负责释放
+
+**Medium (6)**
+- TxtParser 章节标题混入正文首行 — `contentStart` 从匹配末尾改为标题行换行后，正文不再重复一次标题文字
+- ReadingPercent 空引用判定失效 — `_currentNovel?.Chapters.Count == 0` 永远为 `false`，改为显式 null-check
+- OpenFile 命令切书丢精确进度 — 新增 `OnLoadNovelRequested` 事件，宿主窗口先 `SaveCurrentProgress()` 再 `LoadNovel`
+- DownloadService / BookSourceService 非原子写 — 提取 `DataStore.WriteAtomically(path, content)` 共用，崩溃时不再留下截断的 `tasks.json` / `sources.json`
+- DownloadService.RemoveTask 未加锁 — 用 `_tasksLock` 包住 `_tasks` 操作，与其它读写一致
+- 自动滚动到全书末尾不停 — `OnScrollTick` 检测到 `_loadedChapterEnd >= chapters.Count - 1` 且已触底时主动 Toggle 关闭定时器并 Toast「已到达末尾」
+
+**Low (2)**
+- 删除 `MainViewModel.OnScrollTick` 死代码（无人订阅的转发事件，泄漏闭包）
+- `MainWindow.RegisterHotkeys` 字典里两个 entry 挤一行的排版
+
+### Internal
+
+- `DataStore.WriteJsonAtomically<T>` 拆出 `internal static WriteAtomically(string path, string content)`，可被同程序集的其它服务复用
+- `MainWindow` 新增 `ComputeChapterRelativeRatio()` / `ScrollToChapterRatio(idx, ratio)`，统一进度持久化与恢复的换算
+- `OnLoadNovelRequested` 事件作为 OpenFile 命令与宿主之间的解耦点
+
+---
+
 ## v1.0.1 (2026-05-13)
 
 ### New Features

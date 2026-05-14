@@ -125,15 +125,18 @@ public partial class TxtParser : INovelParser
             var match = matches[i];
             var startIndex = match.Index;
 
-            // Content goes from end of this header to start of next header (or end of text)
-            var contentStart = startIndex + match.Length;
-            var contentEnd = i + 1 < matches.Count ? matches[i + 1].Index : text.Length;
-            var content = text[contentStart..contentEnd].Trim();
-
             // Extract the full header line (marker + title text, e.g. "第一章 奇怪的梦")
             var lineEnd = text.IndexOf('\n', startIndex);
             if (lineEnd < 0) lineEnd = text.Length;
             var title = text[startIndex..lineEnd].Trim();
+
+            // Content starts AFTER the header line; otherwise the title text appears
+            // duplicated at the start of the chapter body.
+            var contentStart = lineEnd < text.Length ? lineEnd + 1 : text.Length;
+            var contentEnd = i + 1 < matches.Count ? matches[i + 1].Index : text.Length;
+            var content = contentStart <= contentEnd
+                ? text[contentStart..contentEnd].Trim()
+                : string.Empty;
 
             chapters.Add(new Chapter
             {

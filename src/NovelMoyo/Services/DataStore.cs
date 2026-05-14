@@ -124,12 +124,26 @@ public class DataStore
 
     private static void WriteJsonAtomically<T>(string targetPath, T data)
     {
+        var json = JsonSerializer.Serialize(data, JsonOptions);
+        WriteAtomically(targetPath, json);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="content"/> to <paramref name="targetPath"/> via a temp file
+    /// + <see cref="File.Replace(string,string,string)"/> so a crash mid-write cannot leave
+    /// the target file truncated or empty. Exposed for other services that persist JSON.
+    /// </summary>
+    internal static void WriteAtomically(string targetPath, string content)
+    {
+        var dir = Path.GetDirectoryName(targetPath);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
+
         var tempPath = targetPath + ".tmp";
         var backupPath = targetPath + ".bak";
         try
         {
-            var json = JsonSerializer.Serialize(data, JsonOptions);
-            File.WriteAllText(tempPath, json);
+            File.WriteAllText(tempPath, content);
             if (File.Exists(targetPath))
             {
                 // File.Replace is atomic on NTFS and creates a backup of the original

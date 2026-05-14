@@ -13,10 +13,11 @@ using NovelMoyo.Services.Download;
 
 namespace NovelMoyo.ViewModels;
 
-public class OnlineBookStoreViewModel : INotifyPropertyChanged
+public class OnlineBookStoreViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly SearchService _searchService;
     private readonly DownloadService _downloadService;
+    private bool _disposed;
 
     private string _searchKeyword = string.Empty;
     private string _urlInput = string.Empty;
@@ -283,6 +284,18 @@ public class OnlineBookStoreViewModel : INotifyPropertyChanged
 
     // H7: Static event — BookshelfWindow subscribes/unsubscribes in ctor/Closed
     public static event EventHandler? BookshelfRefreshRequested;
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        // _downloadService is an app-lifetime singleton, so failing to unsubscribe here
+        // would keep this VM (and the window's visual tree) alive until app exit.
+        _downloadService.ProgressChanged -= OnDownloadProgressChanged;
+        _downloadService.TaskAdded -= OnTaskAdded;
+        _downloadService.TaskCompleted -= OnTaskCompleted;
+        GC.SuppressFinalize(this);
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

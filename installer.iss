@@ -1,6 +1,6 @@
 [Setup]
 AppName=NovelMoyo
-AppVersion=1.0.1
+AppVersion=1.0.2
 AppPublisher=NovelMoyo
 DefaultDirName={autopf}\NovelMoyo
 DefaultGroupName=NovelMoyo

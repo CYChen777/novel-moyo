@@ -148,7 +148,8 @@ public class DownloadService : IDisposable
             finally
             {
                 _activeDownloads.TryRemove(task.Id, out _);
-                _taskCancellations.TryRemove(task.Id, out _);
+                if (_taskCancellations.TryRemove(task.Id, out var disposingTaskCts))
+                    disposingTaskCts.Dispose();
                 linkedCts.Dispose();
             }
         });
@@ -170,8 +171,8 @@ public class DownloadService : IDisposable
             }
         }
 
-        // Cancel the token; the download task will clean itself up
-        if (_taskCancellations.TryRemove(taskId, out var taskCts))
+        // Cancel the token; the download task's finally block owns disposal.
+        if (_taskCancellations.TryGetValue(taskId, out var taskCts))
             taskCts.Cancel();
 
         SaveTasks();
@@ -179,12 +180,15 @@ public class DownloadService : IDisposable
 
     public void RemoveTask(string taskId)
     {
-        var task = _tasks.FirstOrDefault(t => t.Id == taskId);
-        if (task != null)
+        lock (_tasksLock)
         {
-            _tasks.Remove(task);
-            SaveTasks();
+            var task = _tasks.FirstOrDefault(t => t.Id == taskId);
+            if (task != null)
+            {
+                _tasks.Remove(task);
+            }
         }
+        SaveTasks();
     }
 
     private async Task DownloadBookAsync(DownloadTaskInfo task, Models.BookSource source, CancellationToken ct)
@@ -441,7 +445,7 @@ public class DownloadService : IDisposable
                 snapshot = _tasks.ToList();
             }
             var json = JsonSerializer.Serialize(snapshot, JsonOptions);
-            File.WriteAllText(TasksPath, json);
+            DataStore.WriteAtomically(TasksPath, json);
         }
         catch (Exception ex)
         {

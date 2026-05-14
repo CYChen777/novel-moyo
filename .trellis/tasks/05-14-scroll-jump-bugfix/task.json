@@ -1,0 +1,8 @@
+{
+  "title": "fix: 滚轮跳章 + 跨次启动跳章 + 资源泄漏 (v1.0.2)",
+  "slug": "scroll-jump-bugfix",
+  "status": "completed",
+  "created_at": "2026-05-14T10:00:00",
+  "completed_at": "2026-05-14T16:00:00",
+  "directory": "05-14-scroll-jump-bugfix"
+}

@@ -64,11 +64,10 @@ public class BookSourceService
 
     public void Save()
     {
-        Directory.CreateDirectory(AppDataRoot);
         BookSourceConfig config;
         lock (_lock) { config = _config; }
         var json = JsonSerializer.Serialize(config, JsonOptions);
-        File.WriteAllText(SourcesPath, json);
+        DataStore.WriteAtomically(SourcesPath, json);
     }
 
     public void Add(Models.BookSource source)
