@@ -266,9 +266,9 @@ public class MainViewModel : INotifyPropertyChanged
     {
         try
         {
-            // Save current novel's progress before switching (if any novel is open)
-            if (_currentNovel is not null)
-                SaveCurrentProgressWithScroll(0, _currentProgress?.ChapterScrollRatio ?? 0);
+            // NOTE: Callers must call MainWindow.SaveCurrentProgress() before LoadNovel
+            // to persist the live scroll offset. We intentionally do NOT save here because
+            // we don't have access to the real scroll offset at this point.
 
             var parser = _parserFactory.GetParser(filePath);
             var novel = parser.Parse(filePath);

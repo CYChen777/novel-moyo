@@ -1,6 +1,39 @@
 # Changelog
 
-## v1.0.2 (2026-05-14)
+## v1.0.3 (2026-05-22)
+
+### Bug Fixes (17 项)
+
+**Critical (4) — 滚轮跳章根本修复**
+- 字符→像素线性假设导致分隔符区域定位偏移 — 新增 `_chapterPixelOffsets[]` 数组和 `MeasureChapterHeights()` 方法，用临时 TextBlock 实测每章渲染高度。`UpdateCurrentChapterFromScroll`、`TrimOldChapters`、`ComputeChapterRelativeRatio`、`ScrollToChapterRatio` 全部改用像素偏移替代字符偏移，消除章节分隔符高度误差。窗口 resize 时自动重测
+- AppendNextChapter 后无同步布局 — 改预测量方式：文本修改前通过临时 TextBlock 测量新章节高度，直接追加到 `_chapterPixelOffsets`，不再依赖 UpdateLayout+ScrollableHeight 差值
+- ScrollChanged 异步触发时保护标志已清除 — 新增 `_needsDeferredScrollUpdate` 标志，文本修改后第一次异步 ScrollChanged 检查并消费，防止在布局未同步时重复触发 Trim/Append
+- 快速连续滚轮时 Trim 累积误差 — 像素偏移方案从根本消除每帧像素偏差；RemoveFirstChapter 使用 `_chapterPixelOffsets[1]` 实测值而非 ScrollableHeight 差值
+
+**High (4)**
+- 2 秒冷却期不够导致渐进加载干扰初始恢复 — AppendNextChapter / PrependPreviousChapter 末尾重置 `_contentLoadTime`
+- 快捷键切章 + ScrollChanged 竞争 — CurrentChapter 变更时确保 MeasureChapterHeights 在 ScrollToChapterRatio 前已调用
+- _pendingScrollRatio 未消费时 CompositionTarget.Rendering 事件泄漏 — OnClosing 中清理 pending scroll restore 事件
+- nearBottom/nearTop 阈值在短章节时太敏感 — 增加像素绝对值阈值（500px）双重判定
+
+**Medium (3)**
+- ParagraphSpacing 变更 BuildFullBookContent 丢失滚动位置 — 重建前保存并恢复 VerticalOffset
+- HandleMouseWheel 对高 delta 鼠标放大过度 — Math.Clamp(delta, -1000, 1000) 限制输入
+- LoadNovel 切书时 scrollOffset=0 写入进度 — 移除冗余 SaveCurrentProgressWithScroll(0, ...) 调用
+
+**Low (4)**
+- ChapterSeparator static readonly → const
+- 鼠标钩子可能重复安装 — InstallMouseHook 增加重复防护
+- 窗口隐藏时不保存进度 — OnClosing 隐藏分支新增 SaveCurrentProgress
+- ApplyParagraphSpacing 小值无效 — Round(spacing/4)=0 修复为 Math.Max(1, spacing/2)
+
+### Internal
+
+- `_chapterPixelOffsets[]` + `MeasureChapterHeights()` — 基于实测像素的章节↔滚动位置映射，替代字符偏移线性估算
+- `_needsDeferredScrollUpdate` — 文本修改后异步 ScrollChanged 保护标志
+- `SizeChanged` 事件处理器 — 窗口大小变化时重测像素偏移并更新进度
+
+---
 
 ### Bug Fixes (12 项)
 

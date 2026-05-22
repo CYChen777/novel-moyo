@@ -91,11 +91,14 @@ public partial class MainWindow : Window
 
     // Progressive chapter loading — only keep a window of chapters in the TextBlock
     private readonly List<int> _chapterCharOffsets = []; // char offset of each chapter start in current TextBlock text
+    private readonly List<double> _chapterPixelOffsets = []; // measured pixel Y-offset of each chapter start (parallel to _chapterCharOffsets)
     private bool _isUpdatingFromScroll;
     private bool _isBuildingContent;
     private bool _isAdjustingScroll;
     private bool _isAppendingOrTrimming; // prevents re-entrant AppendNextChapter/TrimOldChapters during ScrollChanged
+    private bool _needsDeferredScrollUpdate; // set after text change; first async ScrollChanged runs chapter tracking then clears
     private double _pendingScrollRatio; // scroll ratio waiting to be restored after layout
+    private double _lastScrollOffset; // latest VerticalOffset from ScrollChanged, for SaveCurrentProgress during novel switch
     private int _loadedChapterStart = -1; // first chapter index loaded in TextBlock
     private int _loadedChapterEnd = -1;   // last chapter index loaded in TextBlock
     private const int ChapterBufferSize = 3; // load this many chapters above/below current
@@ -168,6 +171,21 @@ public partial class MainWindow : Window
         DragOver += OnDragOver;
 
         Loaded += OnWindowLoaded;
+        SizeChanged += (_, _) =>
+        {
+            // Window resize changes text wrapping → remeasure chapter pixel offsets
+            if (_chapterCharOffsets.Count > 0 && ReadingText.ActualWidth > 0)
+            {
+                MeasureChapterHeights();
+                // Re-save progress with updated pixel-based ratio
+                var sv = ReadingScrollViewer;
+                if (sv.ScrollableHeight > 0)
+                {
+                    var chapterRatio = ComputeChapterRelativeRatio();
+                    _vm.UpdateReadingProgress((int)sv.VerticalOffset, chapterRatio);
+                }
+            }
+        };
         IsVisibleChanged += (_, e) => _vm.IsVisible = (bool)e.NewValue;
 
         ShowContent();
@@ -196,6 +214,7 @@ public partial class MainWindow : Window
 
     private void InstallMouseHook()
     {
+        if (_mouseHookHandle != IntPtr.Zero) return; // guard against double-install
         _mouseHookProc = MouseHookCallback;
         _mouseHookHandle = SetWindowsHookEx(WH_MOUSE_LL, _mouseHookProc, IntPtr.Zero, 0);
     }
@@ -306,6 +325,10 @@ public partial class MainWindow : Window
                     var localIdx = idx - _loadedChapterStart;
                     if (localIdx >= 0 && localIdx < _chapterCharOffsets.Count)
                     {
+                        // Ensure pixel offsets are available before using them (bug #6)
+                        if (_chapterPixelOffsets.Count != _chapterCharOffsets.Count)
+                            MeasureChapterHeights();
+
                         // Check if we have a saved scroll ratio to restore
                         var savedRatio = _vm.SavedScrollRatio;
                         if (savedRatio > 0.01)
@@ -327,9 +350,8 @@ public partial class MainWindow : Window
                         else
                         {
                             _isAdjustingScroll = false;
-                            // Scroll to chapter start using ratio (more reliable than char offset for CJK)
-                            var chapterRatio = (double)_chapterCharOffsets[localIdx] / Math.Max(1, ReadingText.Text.Length);
-                            ScrollToRatio(chapterRatio);
+                            // Scroll to chapter start using pixel offsets (bug #1)
+                            ScrollToChapterRatio(idx, 0);
                         }
                     }
                     else
@@ -364,8 +386,11 @@ public partial class MainWindow : Window
                 ReadingText.LineHeight = _vm.FontSize * _vm.LineSpacing;
                 break;
             case nameof(_vm.ParagraphSpacing):
-                // Rebuild content to apply new paragraph spacing
+                // Save scroll position before rebuilding (bug #9)
+                var savedParaSpacingOffset = ReadingScrollViewer.VerticalOffset;
                 BuildFullBookContent();
+                // Restore approximate scroll position after rebuild
+                ReadingScrollViewer.ScrollToVerticalOffset(savedParaSpacingOffset);
                 break;
         }
     }
@@ -526,7 +551,7 @@ public partial class MainWindow : Window
     // === PROGRESSIVE CHAPTER LOADING ===
     // Only keep a window of chapters in the TextBlock to avoid WPF layout freeze on large novels.
 
-    private static readonly string ChapterSeparator = "\n\n————————————————————\n\n";
+    private const string ChapterSeparator = "\n\n————————————————————\n\n";
 
     private void BuildFullBookContent()
     {
@@ -535,6 +560,7 @@ public partial class MainWindow : Window
         {
             ReadingText.Text = "拖拽 .txt 或 .epub 文件到此处开始阅读";
             _chapterCharOffsets.Clear();
+            _chapterPixelOffsets.Clear();
             _loadedChapterStart = -1;
             _loadedChapterEnd = -1;
             return;
@@ -548,6 +574,7 @@ public partial class MainWindow : Window
             _isAdjustingScroll = true; // block UpdateCurrentChapterFromScroll until chapter is set
             ReadingText.Text = "";
             _chapterCharOffsets.Clear();
+            _chapterPixelOffsets.Clear();
             _loadedChapterStart = -1;
             _loadedChapterEnd = -1;
             return;
@@ -570,6 +597,7 @@ public partial class MainWindow : Window
 
         var sb = new System.Text.StringBuilder();
         _chapterCharOffsets.Clear();
+        _chapterPixelOffsets.Clear();
 
         for (int i = startIdx; i <= endIdx; i++)
         {
@@ -585,6 +613,64 @@ public partial class MainWindow : Window
         ReadingText.Text = sb.ToString();
         _isBuildingContent = false;
         _contentLoadTime = DateTime.Now;
+        _needsDeferredScrollUpdate = true; // ensure first async ScrollChanged runs chapter tracking
+
+        // Measure chapter pixel offsets for accurate scroll↔chapter mapping.
+        // ActualWidth may be 0 before window is shown; SizeChanged or first ScrollChanged will retry.
+        MeasureChapterHeights();
+    }
+
+    /// <summary>
+    /// Measures the rendered pixel height of each chapter in the loaded buffer and populates
+    /// <see cref="_chapterPixelOffsets"/>. Uses a throwaway TextBlock with identical formatting
+    /// properties and the same width as the real one. Falls back to character-ratio estimation
+    /// when ActualWidth is not yet available (window not yet shown).
+    /// </summary>
+    private void MeasureChapterHeights()
+    {
+        var chapters = _vm.CurrentNovel?.Chapters;
+        if (chapters is null) return;
+
+        _chapterPixelOffsets.Clear();
+        var width = ReadingText.ActualWidth - ReadingText.Padding.Left - ReadingText.Padding.Right;
+        if (width <= 0)
+        {
+            // ActualWidth not available yet (window not shown). Fall back to char-ratio estimation
+            // using ScrollableHeight if available, otherwise leave empty for retry on SizeChanged/ScrollChanged.
+            var sv = ReadingScrollViewer;
+            if (sv.ScrollableHeight > 0 && ReadingText.Text.Length > 0)
+            {
+                var totalChars = ReadingText.Text.Length;
+                foreach (var charOff in _chapterCharOffsets)
+                    _chapterPixelOffsets.Add((double)charOff / totalChars * sv.ScrollableHeight);
+            }
+            return;
+        }
+
+        var measurer = new System.Windows.Controls.TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            FontFamily = ReadingText.FontFamily,
+            FontSize = ReadingText.FontSize,
+            LineHeight = ReadingText.LineHeight,
+            Width = width
+        };
+
+        double cumulativeHeight = 0;
+        for (int i = 0; i < _chapterCharOffsets.Count; i++)
+        {
+            _chapterPixelOffsets.Add(cumulativeHeight);
+
+            // Measure this chapter's content height individually (separator height is constant
+            // and cancels out in ratio/difference calculations)
+            var globalIdx = _loadedChapterStart + i;
+            if (globalIdx >= 0 && globalIdx < chapters.Count)
+            {
+                measurer.Text = ApplyParagraphSpacing(chapters[globalIdx].Content);
+                measurer.Measure(new System.Windows.Size(width, double.PositiveInfinity));
+                cumulativeHeight += measurer.DesiredSize.Height;
+            }
+        }
     }
 
     private void AppendNextChapter()
@@ -592,14 +678,54 @@ public partial class MainWindow : Window
         var chapters = _vm.CurrentNovel?.Chapters;
         if (chapters is null || _loadedChapterEnd >= chapters.Count - 1) return;
 
+        var sv = ReadingScrollViewer;
+        var prevScrollable = sv.ScrollableHeight;
+
         var nextIdx = _loadedChapterEnd + 1;
-        var newContent = ChapterSeparator + ApplyParagraphSpacing(chapters[nextIdx].Content);
+        var chapterContent = ApplyParagraphSpacing(chapters[nextIdx].Content);
+        var newContent = ChapterSeparator + chapterContent;
 
         _chapterCharOffsets.Add(ReadingText.Text.Length + ChapterSeparator.Length);
+
+        // Measure new chapter height for pixel offset tracking
+        var width = ReadingText.ActualWidth - ReadingText.Padding.Left - ReadingText.Padding.Right;
+        double newChapterHeight = 0;
+        if (width > 0)
+        {
+            var measurer = new System.Windows.Controls.TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                FontFamily = ReadingText.FontFamily,
+                FontSize = ReadingText.FontSize,
+                LineHeight = ReadingText.LineHeight,
+                Width = width,
+                Text = chapterContent
+            };
+            measurer.Measure(new System.Windows.Size(width, double.PositiveInfinity));
+            newChapterHeight = measurer.DesiredSize.Height;
+        }
+
         _isBuildingContent = true;
         ReadingText.Text += newContent;
         _isBuildingContent = false;
         _loadedChapterEnd = nextIdx;
+        _contentLoadTime = DateTime.Now; // reset cooldown to prevent premature trim/append during restore (bug #5)
+
+        // Append doesn't change current scroll offset, just increases ScrollableHeight.
+        // Set deferred flag so the async ScrollChanged skips redundant chapter tracking.
+        _needsDeferredScrollUpdate = true;
+
+        if (width > 0)
+        {
+            var prevEnd = _chapterPixelOffsets.Count > 0
+                ? _chapterPixelOffsets[^1]
+                : 0;
+            // If prevEnd is 0 (first measurement was fallback), remeasure all
+            if (prevEnd > 0 || _chapterPixelOffsets.Count == 0)
+                _chapterPixelOffsets.Add(prevEnd + newChapterHeight);
+            else
+                MeasureChapterHeights(); // fallback was used, remeasure properly
+        }
     }
 
     private void PrependPreviousChapter()
@@ -608,10 +734,11 @@ public partial class MainWindow : Window
         if (chapters is null || _loadedChapterStart <= 0) return;
 
         var prevIdx = _loadedChapterStart - 1;
-        var newContent = ApplyParagraphSpacing(chapters[prevIdx].Content) + ChapterSeparator;
+        var chapterContent = ApplyParagraphSpacing(chapters[prevIdx].Content);
+        var newContent = chapterContent + ChapterSeparator;
         var addedLength = newContent.Length;
 
-        // Update existing offsets (they all shift by addedLength)
+        // Update existing char offsets (they all shift by addedLength)
         for (int i = 0; i < _chapterCharOffsets.Count; i++)
             _chapterCharOffsets[i] += addedLength;
 
@@ -619,22 +746,44 @@ public partial class MainWindow : Window
         _loadedChapterStart = prevIdx;
 
         var sv = ReadingScrollViewer;
-        var prevScrollable = sv.ScrollableHeight;
         var prevOffset = sv.VerticalOffset;
+
+        // Measure prepended chapter height for pixel offset adjustment
+        var width = ReadingText.ActualWidth - ReadingText.Padding.Left - ReadingText.Padding.Right;
+        double newChapterHeight = 0;
+        if (width > 0)
+        {
+            var measurer = new System.Windows.Controls.TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                FontFamily = ReadingText.FontFamily,
+                FontSize = ReadingText.FontSize,
+                LineHeight = ReadingText.LineHeight,
+                Width = width,
+                Text = chapterContent
+            };
+            measurer.Measure(new System.Windows.Size(width, double.PositiveInfinity));
+            newChapterHeight = measurer.DesiredSize.Height;
+        }
+
+        // Shift existing pixel offsets by the prepended chapter's height
+        for (int i = 0; i < _chapterPixelOffsets.Count; i++)
+            _chapterPixelOffsets[i] += newChapterHeight;
+        _chapterPixelOffsets.Insert(0, 0);
 
         _isBuildingContent = true;
         _isAdjustingScroll = true;
         ReadingText.Text = newContent + ReadingText.Text;
         _isBuildingContent = false;
+        _contentLoadTime = DateTime.Now; // reset cooldown (bug #5)
 
         // Synchronous layout so we can measure the prepended chapter's exact pixel height.
         // The visible content shifts down by exactly that amount, so we must scroll down by it too.
         sv.UpdateLayout();
-        var newScrollable = sv.ScrollableHeight;
-        var addedScroll = newScrollable - prevScrollable;
-        sv.ScrollToVerticalOffset(prevOffset + addedScroll);
+        sv.ScrollToVerticalOffset(prevOffset + newChapterHeight);
 
         _isAdjustingScroll = false;
+        _needsDeferredScrollUpdate = false; // we handled the scroll adjustment synchronously
     }
 
     private void TrimOldChapters()
@@ -647,18 +796,33 @@ public partial class MainWindow : Window
         var sv = ReadingScrollViewer;
         if (sv.ScrollableHeight <= 0) return;
 
-        // Determine which local chapter index is at the viewport center
-        var scrollRatio = sv.VerticalOffset / sv.ScrollableHeight;
-        var totalChars = ReadingText.Text.Length;
-        var currentChar = (int)(scrollRatio * totalChars);
-
+        // Use pixel offsets for accurate chapter detection (eliminates separator-height error)
+        var currentPx = sv.VerticalOffset;
         var currentLocalIdx = 0;
-        for (int i = _chapterCharOffsets.Count - 1; i >= 0; i--)
+        if (_chapterPixelOffsets.Count > 0)
         {
-            if (currentChar >= _chapterCharOffsets[i])
+            for (int i = _chapterPixelOffsets.Count - 1; i >= 0; i--)
             {
-                currentLocalIdx = i;
-                break;
+                if (currentPx >= _chapterPixelOffsets[i])
+                {
+                    currentLocalIdx = i;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            // Fallback to char-ratio if pixel offsets not yet measured
+            var scrollRatio = sv.VerticalOffset / sv.ScrollableHeight;
+            var totalChars = ReadingText.Text.Length;
+            var currentChar = (int)(scrollRatio * totalChars);
+            for (int i = _chapterCharOffsets.Count - 1; i >= 0; i--)
+            {
+                if (currentChar >= _chapterCharOffsets[i])
+                {
+                    currentLocalIdx = i;
+                    break;
+                }
             }
         }
 
@@ -680,8 +844,10 @@ public partial class MainWindow : Window
         if (_chapterCharOffsets.Count < 2) return;
 
         var sv = ReadingScrollViewer;
-        var prevScrollable = sv.ScrollableHeight;
         var prevOffset = sv.VerticalOffset;
+
+        // Use measured pixel offset for the removed chapter's height (eliminates separator error)
+        var removedChapterPxHeight = _chapterPixelOffsets.Count > 1 ? _chapterPixelOffsets[1] : 0;
 
         // Find where the separator before chapter 1 starts, to remove it cleanly
         var chapter1Start = _chapterCharOffsets[1];
@@ -694,21 +860,22 @@ public partial class MainWindow : Window
         for (int i = 0; i < _chapterCharOffsets.Count; i++)
             _chapterCharOffsets[i] -= removedLen;
 
+        _chapterPixelOffsets.RemoveAt(0);
+        // Remaining pixel offsets shift up by the removed chapter's pixel height
+        for (int i = 0; i < _chapterPixelOffsets.Count; i++)
+            _chapterPixelOffsets[i] = Math.Max(0, _chapterPixelOffsets[i] - removedChapterPxHeight);
+
         _isBuildingContent = true;
         _isAdjustingScroll = true;
         ReadingText.Text = text[cutPoint..];
         _isBuildingContent = false;
         _loadedChapterStart++;
 
-        // Synchronous layout so we can measure the removed chapter's exact pixel height.
-        // The visible content shifts up by exactly that amount, so we must scroll up by it too.
-        // Using ratio-based restoration here causes a forward jump of ~1 chapter per trim.
-        sv.UpdateLayout();
-        var newScrollable = sv.ScrollableHeight;
-        var shrinkage = prevScrollable - newScrollable;
-        sv.ScrollToVerticalOffset(Math.Max(0, prevOffset - shrinkage));
+        // Scroll up by the exact pixel height of the removed chapter to preserve visual position.
+        sv.ScrollToVerticalOffset(Math.Max(0, prevOffset - removedChapterPxHeight));
 
         _isAdjustingScroll = false;
+        _needsDeferredScrollUpdate = false; // we handled the scroll adjustment synchronously
     }
 
     private void RemoveLastChapter()
@@ -722,6 +889,8 @@ public partial class MainWindow : Window
         var cutPoint = sepIdx >= 0 ? sepIdx : lastOffset;
 
         _chapterCharOffsets.RemoveAt(_chapterCharOffsets.Count - 1);
+        if (_chapterPixelOffsets.Count > 0)
+            _chapterPixelOffsets.RemoveAt(_chapterPixelOffsets.Count - 1);
 
         _isBuildingContent = true;
         ReadingText.Text = text[..cutPoint];
@@ -764,24 +933,47 @@ public partial class MainWindow : Window
         var sv = ReadingScrollViewer;
         if (sv.ScrollableHeight <= 0 || _chapterCharOffsets.Count == 0) return 0;
 
+        var currentPx = sv.VerticalOffset;
+
+        // Prefer pixel offsets for accurate chapter-relative ratio
+        if (_chapterPixelOffsets.Count == _chapterCharOffsets.Count && _chapterPixelOffsets.Count > 0)
+        {
+            var localIdx = 0;
+            for (int i = _chapterPixelOffsets.Count - 1; i >= 0; i--)
+            {
+                if (currentPx >= _chapterPixelOffsets[i])
+                {
+                    localIdx = i;
+                    break;
+                }
+            }
+
+            var chapStartPx = _chapterPixelOffsets[localIdx];
+            var chapEndPx = localIdx + 1 < _chapterPixelOffsets.Count
+                ? _chapterPixelOffsets[localIdx + 1]
+                : sv.ScrollableHeight;
+            if (chapEndPx <= chapStartPx) return 0;
+            return Math.Clamp((currentPx - chapStartPx) / (chapEndPx - chapStartPx), 0, 1);
+        }
+
+        // Fallback to char-ratio if pixel offsets not yet measured
         var totalChars = ReadingText.Text.Length;
         if (totalChars <= 0) return 0;
+        var currentChar = (currentPx / sv.ScrollableHeight) * totalChars;
 
-        var currentChar = (sv.VerticalOffset / sv.ScrollableHeight) * totalChars;
-
-        var localIdx = 0;
+        var fbLocalIdx = 0;
         for (int i = _chapterCharOffsets.Count - 1; i >= 0; i--)
         {
             if (currentChar >= _chapterCharOffsets[i])
             {
-                localIdx = i;
+                fbLocalIdx = i;
                 break;
             }
         }
 
-        var chapStartChar = (double)_chapterCharOffsets[localIdx];
-        var chapEndChar = localIdx + 1 < _chapterCharOffsets.Count
-            ? (double)_chapterCharOffsets[localIdx + 1]
+        var chapStartChar = (double)_chapterCharOffsets[fbLocalIdx];
+        var chapEndChar = fbLocalIdx + 1 < _chapterCharOffsets.Count
+            ? (double)_chapterCharOffsets[fbLocalIdx + 1]
             : totalChars;
         if (chapEndChar <= chapStartChar) return 0;
         return Math.Clamp((currentChar - chapStartChar) / (chapEndChar - chapStartChar), 0, 1);
@@ -800,6 +992,23 @@ public partial class MainWindow : Window
         var sv = ReadingScrollViewer;
         if (sv.ScrollableHeight <= 0) return;
 
+        // Prefer pixel offsets for accurate scroll positioning
+        if (_chapterPixelOffsets.Count == _chapterCharOffsets.Count && _chapterPixelOffsets.Count > 0)
+        {
+            if (localIdx >= _chapterPixelOffsets.Count) return;
+
+            var chapStartPx = _chapterPixelOffsets[localIdx];
+            var chapEndPx = localIdx + 1 < _chapterPixelOffsets.Count
+                ? _chapterPixelOffsets[localIdx + 1]
+                : sv.ScrollableHeight;
+
+            var clamped = Math.Clamp(ratioWithinChapter, 0, 1);
+            var target = chapStartPx + clamped * (chapEndPx - chapStartPx);
+            sv.ScrollToVerticalOffset(Math.Max(0, target));
+            return;
+        }
+
+        // Fallback to char-ratio if pixel offsets not yet measured
         var totalChars = ReadingText.Text.Length;
         if (totalChars <= 0) return;
 
@@ -808,12 +1017,12 @@ public partial class MainWindow : Window
             ? (double)_chapterCharOffsets[localIdx + 1]
             : totalChars;
 
-        var chapStartPx = chapStartChar / totalChars * sv.ScrollableHeight;
-        var chapEndPx = chapEndChar / totalChars * sv.ScrollableHeight;
-        var clamped = Math.Clamp(ratioWithinChapter, 0, 1);
-        var target = chapStartPx + clamped * (chapEndPx - chapStartPx);
+        var chapStartPxFallback = chapStartChar / totalChars * sv.ScrollableHeight;
+        var chapEndPxFallback = chapEndChar / totalChars * sv.ScrollableHeight;
+        var clampedFallback = Math.Clamp(ratioWithinChapter, 0, 1);
+        var targetFallback = chapStartPxFallback + clampedFallback * (chapEndPxFallback - chapStartPxFallback);
 
-        sv.ScrollToVerticalOffset(Math.Max(0, target));
+        sv.ScrollToVerticalOffset(Math.Max(0, targetFallback));
     }
 
     /// <summary>
@@ -823,8 +1032,10 @@ public partial class MainWindow : Window
     {
         var spacing = _vm.ParagraphSpacing;
         if (spacing <= 0) return content.Replace("\r\n", "\n");
-        // Each unit of ParagraphSpacing adds one extra blank line between paragraphs
-        var extraNewlines = new string('\n', (int)Math.Round(spacing / 4.0));
+        // Each unit of ParagraphSpacing adds extra blank lines between paragraphs.
+        // Use spacing/2 (floored, min 1) for more responsive small-value adjustments (bug #17)
+        var extraCount = Math.Max(1, (int)(spacing / 2));
+        var extraNewlines = new string('\n', extraCount);
         // Normalize line endings first, then expand paragraph breaks
         var normalized = content.Replace("\r\n", "\n");
         return normalized.Replace("\n\n", "\n" + extraNewlines + "\n");
@@ -855,6 +1066,11 @@ public partial class MainWindow : Window
         if (_chapterCharOffsets.Count == 0 || _vm.CurrentNovel is null) return;
         if (_isBuildingContent || _isAdjustingScroll || _isAppendingOrTrimming) return;
 
+        // Lazy-initialize pixel offsets if they weren't measured during LoadChapterRange
+        // (e.g. ActualWidth was 0 before window was shown).
+        if (_chapterPixelOffsets.Count != _chapterCharOffsets.Count && ReadingText.ActualWidth > 0)
+            MeasureChapterHeights();
+
         var sv = ReadingScrollViewer;
 
         // Update chapter tracking even when there is nothing to scroll
@@ -869,18 +1085,35 @@ public partial class MainWindow : Window
             return;
         }
 
-        var scrollRatio = sv.VerticalOffset / sv.ScrollableHeight;
-        var totalChars = ReadingText.Text.Length;
-        var currentChar = (int)(scrollRatio * totalChars);
-
-        // Find which local chapter this character belongs to
-        var localIdx = 0;
-        for (int i = _chapterCharOffsets.Count - 1; i >= 0; i--)
+        // Use pixel offsets for accurate chapter detection (eliminates separator-height error, bug #1)
+        int localIdx;
+        if (_chapterPixelOffsets.Count == _chapterCharOffsets.Count && _chapterPixelOffsets.Count > 0)
         {
-            if (currentChar >= _chapterCharOffsets[i])
+            var currentPx = sv.VerticalOffset;
+            localIdx = 0;
+            for (int i = _chapterPixelOffsets.Count - 1; i >= 0; i--)
             {
-                localIdx = i;
-                break;
+                if (currentPx >= _chapterPixelOffsets[i])
+                {
+                    localIdx = i;
+                    break;
+                }
+            }
+        }
+        else
+        {
+            // Fallback to char-ratio if pixel offsets not yet measured
+            var scrollRatio = sv.VerticalOffset / sv.ScrollableHeight;
+            var totalChars = ReadingText.Text.Length;
+            var currentChar = (int)(scrollRatio * totalChars);
+            localIdx = 0;
+            for (int i = _chapterCharOffsets.Count - 1; i >= 0; i--)
+            {
+                if (currentChar >= _chapterCharOffsets[i])
+                {
+                    localIdx = i;
+                    break;
+                }
             }
         }
 
@@ -914,8 +1147,11 @@ public partial class MainWindow : Window
         if ((DateTime.Now - _contentLoadTime).TotalSeconds < 2) return;
         if (_isAppendingOrTrimming) return;
 
-        var nearBottom = sv.VerticalOffset > sv.ScrollableHeight * 0.92;
-        var nearTop = sv.VerticalOffset < sv.ScrollableHeight * 0.08;
+        // Use both ratio and pixel thresholds to avoid over-triggering on short content (bug #8)
+        var nearBottom = sv.VerticalOffset > sv.ScrollableHeight * 0.92
+                         && (sv.ScrollableHeight - sv.VerticalOffset) < 500;
+        var nearTop = sv.VerticalOffset < sv.ScrollableHeight * 0.08
+                      && sv.VerticalOffset < 500;
 
         if (nearBottom || nearTop)
         {
@@ -923,10 +1159,7 @@ public partial class MainWindow : Window
             try
             {
                 // Trim BEFORE Append/Prepend so each operation captures a consistent scroll
-                // state (sv.ScrollableHeight matches the current text length). Doing it the
-                // other way around lets the buffering operation modify text before Trim reads
-                // sv state, which mis-identifies the current chapter and causes a 1-chapter
-                // forward jump on every wheel tick near the bottom.
+                // state (sv.ScrollableHeight matches the current text length).
                 if (nearBottom)
                 {
                     TrimOldChapters();
@@ -972,7 +1205,9 @@ public partial class MainWindow : Window
         if (!_isContentVisible) ShowContent();
         var sv = ReadingScrollViewer;
         var speedMultiplier = _vm.ScrollSpeed;
-        var scrollStep = delta * speedMultiplier / 20.0;
+        // Cap delta to prevent extreme scroll jumps from high-DPI mice (bug #12)
+        var clampedDelta = Math.Clamp(delta, -1000, 1000);
+        var scrollStep = clampedDelta * speedMultiplier / 20.0;
         var newOffset = sv.VerticalOffset - scrollStep;
         sv.ScrollToVerticalOffset(Math.Clamp(newOffset, 0, sv.ScrollableHeight));
     }
@@ -980,7 +1215,18 @@ public partial class MainWindow : Window
     private void ReadingScrollViewer_ScrollChanged(object sender, System.Windows.Controls.ScrollChangedEventArgs e)
     {
         var sv = ReadingScrollViewer;
+        _lastScrollOffset = sv.VerticalOffset; // track for SaveCurrentProgress during novel switch
         _vm.UpdateScrollState(sv.ViewportHeight, sv.ScrollableHeight, sv.VerticalOffset);
+
+        // After text change (Append/Prepend), the first async ScrollChanged fires with updated
+        // layout metrics. Skip redundant chapter tracking to avoid re-entrant trim/append (bug #3).
+        if (_needsDeferredScrollUpdate)
+        {
+            _needsDeferredScrollUpdate = false;
+            UpdateCurrentChapterFromScroll();
+            return;
+        }
+
         UpdateCurrentChapterFromScroll();
     }
 
@@ -1177,8 +1423,10 @@ public partial class MainWindow : Window
             e.Cancel = true;
             // Stop auto-scroll when hiding to prevent background scrolling
             if (_vm.IsAutoScrolling) _vm.ToggleAutoScrollCommand.Execute(null);
+            // Save reading progress when hiding (bug #16: previously lost progress if crash after hide)
+            SaveCurrentProgress();
             Hide();
-            return; // Don't save when merely hiding
+            return;
         }
 
         // Save reading progress with chapter ratio (only on real close)
@@ -1201,6 +1449,12 @@ public partial class MainWindow : Window
         if (_isReallyClosing)
         {
             _vm.PropertyChanged -= OnViewModelPropertyChanged;
+            // Clean up pending scroll restore event handler (bug #7)
+            if (_pendingScrollRatio > 0)
+            {
+                CompositionTarget.Rendering -= OnRestoreScrollAfterLayout;
+                _pendingScrollRatio = 0;
+            }
             if (_mouseHookHandle != IntPtr.Zero)
                 UnhookWindowsHookEx(_mouseHookHandle);
             _hotkeyService.Dispose();
