@@ -1,10 +1,10 @@
 [Setup]
 AppName=NovelMoyo
-AppVersion=1.0.3
+AppVersion=1.0.4
 AppPublisher=NovelMoyo
 DefaultDirName={autopf}\NovelMoyo
 DefaultGroupName=NovelMoyo
-OutputDir=D:\projects\novel-moyo\installer
+OutputDir=.\installer
 OutputBaseFilename=NovelMoyo-Setup
 Compression=lzma2
 SolidCompression=yes
@@ -15,7 +15,7 @@ UninstallDisplayIcon={app}\NovelMoyo.exe
 PrivilegesRequired=lowest
 
 [Files]
-Source: "D:\projects\novel-moyo\src\NovelMoyo\publish\NovelMoyo.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: ".\src\NovelMoyo\publish\NovelMoyo.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\NovelMoyo"; Filename: "{app}\NovelMoyo.exe"

@@ -56,7 +56,7 @@
 - **多书源并行搜索** — 同时从多个书源搜索，自动去重，章节数即时加载
 - **下载管理** — 支持取消下载，下载进度实时显示
 - **自动入库** — 下载完成后自动添加到书架，无需手动导入
-- **断点续传** — 下载任务状态持久化，重启后可继续
+- **任务恢复** — 下载任务状态持久化，重启后未完成任务自动重新排队
 
 > **Online book store** — enter from bookshelf, search novels or paste URL to download
 > **Multi-source parallel search** — search across multiple sources simultaneously, auto-dedup
@@ -130,8 +130,8 @@
 | 下载项 | 说明 | 大小 |
 |---|---|---|
 | `NovelMoyo-Setup.exe` | Inno Setup 安装包，推荐 | ~2.7MB |
-| `NovelMoyo-v1.0.2-fdd.zip` | 框架依赖版，需 [.NET 8 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) | ~1MB |
-| `NovelMoyo-v1.0.2-scd.zip` | 独立部署版，无需额外安装 | ~63MB |
+| `NovelMoyo-v1.0.4-fdd.zip` | 框架依赖版，需 [.NET 8 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) | ~1MB |
+| `NovelMoyo-v1.0.4-scd.zip` | 独立部署版，无需额外安装 | ~63MB |
 
 ### 安装包安装 | Installer
 
@@ -231,7 +231,7 @@ novel-moyo/
 ├── progress/
 │   └── {novelId}.json         # 每本书的阅读进度 + 书签
 └── downloads/
-    └── tasks.json             # 下载任务状态（断点续传）
+    └── tasks.json             # 下载任务状态（重启后重新排队未完成任务）
 ```
 
 All user data is stored at `%APPDATA%\StealthReader\`:

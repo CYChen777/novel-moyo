@@ -4,6 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Text;
 using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Interop;
 using NovelMoyo.Models;
 using NovelMoyo.Services;
 using NovelMoyo.Services.BookSource;
@@ -65,6 +66,7 @@ public partial class App : Application
             var mainVm = new MainViewModel(_dataStore, _bookshelfService, _bookmarkService, autoScrollService, _parserFactory);
             _mainWindow = new MainWindow(mainVm, _settings);
             _mainWindow.InjectServices(_dataStore, _bookshelfService, _parserFactory, _bookmarkService);
+            new WindowInteropHelper(_mainWindow).EnsureHandle();
 
             // Auto-load last novel if setting is enabled
             if (_settings.StartWithLastNovel && !string.IsNullOrEmpty(_settings.LastNovelId))
@@ -104,9 +106,9 @@ public partial class App : Application
         // Save last novel ID — reading progress is already saved in MainWindow.OnClosing
         if (_dataStore is not null)
         {
-            // M19: Use in-memory settings instead of re-loading from disk
-            _settings.LastNovelId = _mainWindow?.CurrentNovelId;
-            _dataStore.SaveSettings(_settings);
+            var latestSettings = _dataStore.LoadSettings();
+            latestSettings.LastNovelId = _mainWindow?.CurrentNovelId;
+            _dataStore.SaveSettings(latestSettings);
         }
 
         // C1: Dispose download services to release HttpClient/socket resources

@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -26,6 +28,7 @@ public class OnlineBookStoreViewModel : INotifyPropertyChanged, IDisposable
     private SearchResult? _selectedResult;
     private string _downloadPath = string.Empty;
     private DownloadTaskInfo? _activeDownload;
+    private int _searchVersion;
 
     public ObservableCollection<SearchResult> SearchResults { get; } = [];
     public ObservableCollection<DownloadTaskInfo> DownloadTasks { get; } = [];
@@ -121,12 +124,14 @@ public class OnlineBookStoreViewModel : INotifyPropertyChanged, IDisposable
 
         try
         {
+            var version = ++_searchVersion;
             var results = await _searchService.SearchAsync(SearchKeyword);
             foreach (var result in results)
             {
                 SearchResults.Add(result);
             }
-            StatusMessage = $"找到 {results.Count} 个结果";
+            StatusMessage = results.Count > 0 ? $"找到 {results.Count} 个结果，正在加载章节数..." : "未找到结果";
+            _ = LoadChapterCountsAsync(results, version);
         }
         catch (Exception ex)
         {
@@ -138,6 +143,39 @@ public class OnlineBookStoreViewModel : INotifyPropertyChanged, IDisposable
             IsSearching = false;
         }
     }
+
+    private async Task LoadChapterCountsAsync(List<SearchResult> results, int version)
+    {
+        using var semaphore = new System.Threading.SemaphoreSlim(5, 5);
+        var tasks = results.Select(async result =>
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                var totalChapters = await _searchService.GetTotalChaptersAsync(result);
+                if (version != _searchVersion || _disposed) return;
+
+                Application.Current?.Dispatcher.Invoke(() =>
+                {
+                    if (version == _searchVersion && !_disposed)
+                        result.TotalChapters = totalChapters;
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[OnlineBookStore] 章节数加载失败: {result.Title} - {ex.Message}");
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+        if (version == _searchVersion && !_disposed)
+            Application.Current?.Dispatcher.Invoke(() => StatusMessage = $"找到 {results.Count} 个结果");
+    }
+
 
     private async Task SearchByUrlAsync()
     {
@@ -335,6 +373,12 @@ public class AsyncRelayCommand : ICommand
         {
             await _execute();
         }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Async command failed: {ex}");
+            System.Windows.MessageBox.Show($"操作失败: {ex.Message}", "错误",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
         finally
         {
             _isExecuting = false;
@@ -371,6 +415,12 @@ public class AsyncRelayCommand<T> : ICommand
         try
         {
             await _execute((T?)parameter);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Async command failed: {ex}");
+            System.Windows.MessageBox.Show($"操作失败: {ex.Message}", "错误",
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
         {

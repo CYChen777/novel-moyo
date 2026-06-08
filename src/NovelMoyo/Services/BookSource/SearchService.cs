@@ -54,27 +54,12 @@ public class SearchService : IDisposable
                 deduped.Add(result);
         }
 
-        // Fetch total chapters in parallel with concurrency limit
-        using var chapterSemaphore = new System.Threading.SemaphoreSlim(5, 5);
-        var chapterTasks = deduped.Select(async result =>
-        {
-            await chapterSemaphore.WaitAsync();
-            try
-            {
-                result.TotalChapters = await _parser.GetTotalChaptersAsync(result.Source, result.Url);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Failed to get chapters for {result.Title}: {ex.Message}");
-            }
-            finally
-            {
-                chapterSemaphore.Release();
-            }
-        });
-        await Task.WhenAll(chapterTasks);
-
         return deduped;
+    }
+
+    public async Task<int> GetTotalChaptersAsync(SearchResult result)
+    {
+        return await _parser.GetTotalChaptersAsync(result.Source, result.Url);
     }
 
     private async Task<List<SearchResult>> SearchSingleSourceAsync(Models.BookSource source, string keyword)
@@ -145,6 +130,12 @@ public class SearchService : IDisposable
     }
 
     public BookSourceParser GetParser() => _parser;
+
+    public Models.BookSource? FindEnabledSourceByTitle(string sourceName)
+    {
+        return _sourceService.GetEnabled()
+            .FirstOrDefault(s => string.Equals(s.Title, sourceName, StringComparison.OrdinalIgnoreCase));
+    }
 
     public void Dispose()
     {

@@ -115,10 +115,6 @@ public class DownloadService : IDisposable
             OutputPath = outputPath
         };
 
-        var taskCts = new CancellationTokenSource();
-        var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, taskCts.Token);
-        _taskCancellations[task.Id] = taskCts;
-
         lock (_tasksLock)
         {
             _tasks.Add(task);
@@ -126,11 +122,24 @@ public class DownloadService : IDisposable
         SaveTasks();
         TaskAdded?.Invoke(task);
 
+        QueueDownloadTask(task, result.Source);
+
+        return Task.FromResult(task);
+    }
+
+    private void QueueDownloadTask(DownloadTaskInfo task, Models.BookSource source)
+    {
+        if (_activeDownloads.ContainsKey(task.Id)) return;
+
+        var taskCts = new CancellationTokenSource();
+        var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, taskCts.Token);
+        _taskCancellations[task.Id] = taskCts;
+
         var downloadTask = Task.Run(async () =>
         {
             try
             {
-                await DownloadBookAsync(task, result.Source, linkedCts.Token);
+                await DownloadBookAsync(task, source, linkedCts.Token);
             }
             catch (Exception ex)
             {
@@ -155,8 +164,6 @@ public class DownloadService : IDisposable
         });
 
         _activeDownloads[task.Id] = downloadTask;
-
-        return Task.FromResult(task);
     }
 
     public void CancelDownload(string taskId)
@@ -423,11 +430,29 @@ public class DownloadService : IDisposable
         {
             var json = File.ReadAllText(TasksPath);
             var tasks = JsonSerializer.Deserialize<List<DownloadTaskInfo>>(json, JsonOptions) ?? [];
-            // Only load completed/failed tasks, discard stale downloading/pending ones
-            foreach (var task in tasks.Where(t => t.Status is DownloadStatus.Completed or DownloadStatus.Failed))
+            foreach (var task in tasks)
             {
-                _tasks.Add(task);
+                lock (_tasksLock)
+                {
+                    _tasks.Add(task);
+                }
+                if (task.Status is DownloadStatus.Pending or DownloadStatus.Downloading)
+                {
+                    var source = _searchService.FindEnabledSourceByTitle(task.SourceName);
+                    if (source is null)
+                    {
+                        task.Status = DownloadStatus.Failed;
+                        task.ErrorMessage = "书源已禁用或不存在，无法继续下载";
+                        continue;
+                    }
+
+                    task.Status = DownloadStatus.Pending;
+                    task.ErrorMessage = null;
+                    task.CompletedChapters = 0;
+                    QueueDownloadTask(task, source);
+                }
             }
+            SaveTasks();
         }
         catch (Exception ex)
         {
